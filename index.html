@@ -1,0 +1,1467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Lira: Rune Forest</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lira">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#cfeedd">
+<link rel="apple-touch-icon" href="art/icon-180.png">
+<link rel="icon" href="art/icon-180.png">
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@500;700;800&display=swap">
+<style>
+:root{
+  /* Layout: one phone-shaped stage; map scrolls through worlds, level screen is HUD + square board + booster bar */
+  --night:#0c1d17; --moss:#2f8a57; --gold:#ffd166; --gold-deep:#d99a2b;
+  --parch:#fdf6e3; --parch-2:#eadbb8; --ink:#1f2a24; --muted:#6c7a70; --rose:#e05597; --sky:#8fd3ff;
+  --display:'Baloo 2','Nunito',system-ui,sans-serif; --body:'Nunito',system-ui,sans-serif;
+  color-scheme:light;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:#cfeedd;color:var(--parch);font-family:var(--body);overflow:hidden}
+#app{position:relative;height:100%;max-width:480px;margin:0 auto;overflow:hidden;background:#cfeedd;user-select:none;-webkit-user-select:none}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column}
+button{font-family:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+
+/* ---------- map ---------- */
+/* Saga map: worlds stack bottom-to-top, a trail joins the levels, Lira stands on the current one */
+#map{background:#cfeedd}
+.topbar{position:relative;z-index:3;display:flex;gap:6px;align-items:center;padding:8px max(12px,env(safe-area-inset-right,0px)) 8px max(12px,env(safe-area-inset-left,0px));background:rgba(255,250,236,.95);color:var(--ink);box-shadow:0 3px 12px rgba(60,90,70,.25)}
+.stat{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(31,42,36,.12);background:rgba(31,42,36,.06);color:var(--ink);border-radius:999px;padding:5px 10px;font:700 13px var(--body);font-variant-numeric:tabular-nums;white-space:nowrap}
+.stat .ico{font-size:14px}
+.stat small{color:var(--muted);font-weight:600}
+.topbar .grow{flex:1}
+button.stat{background:var(--gold);color:var(--ink);border-color:transparent;box-shadow:0 3px 0 var(--gold-deep)}
+.me{display:flex;align-items:center;gap:8px;min-width:0}
+.me .avatar{width:40px;height:40px;flex:none;border-radius:50%;border:2px solid var(--gold);overflow:hidden;background:#2a6b4c}
+.me b{display:block;font:800 16px/1 var(--display)}
+.xp{display:flex;align-items:center;gap:5px;margin-top:3px;font:800 11px var(--body);color:var(--muted)}
+.xp i{position:relative;display:block;width:46px;height:6px;border-radius:3px;background:rgba(31,42,36,.12);overflow:hidden}
+.xp i b{position:absolute;inset:0 auto 0 0;background:var(--gold)}
+#mapScroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
+.mworld{position:relative;background:var(--wbg);overflow:hidden}
+.mworld>svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.mworld .blend{position:absolute;left:0;right:0;top:0;height:90px;background:linear-gradient(var(--above),transparent);pointer-events:none}
+.wtitle{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);text-align:center;white-space:nowrap;padding:7px 18px;border-radius:16px;background:rgba(255,250,236,.92);color:var(--ink);border:2px solid #fff;box-shadow:0 4px 12px rgba(60,90,70,.25)}
+.wtitle span{display:block;font:800 10px var(--body);letter-spacing:.16em;text-transform:uppercase;color:var(--gold-deep)}
+.wtitle b{font:800 21px/1.1 var(--display)}
+.soon .wtitle{bottom:auto;top:50%;transform:translate(-50%,-50%)}
+.soon .wtitle p{margin:2px 0 0;font-size:13px;color:var(--muted);white-space:normal}
+.mnode{position:absolute;z-index:1;transform:translate(-50%,50%);display:flex;flex-direction:column;align-items:center}
+.node{display:grid;place-items:center;padding:0;width:58px;height:58px;border-radius:50%;border:3px solid rgba(255,255,255,.75);font:800 22px var(--display);color:var(--ink);background:radial-gradient(circle at 40% 35%,#fff3c4,var(--gold) 60%,var(--gold-deep));box-shadow:0 5px 0 #8a5c12,0 6px 14px rgba(0,0,0,.35)}
+.node:active:not(:disabled){transform:translateY(3px)}
+.node.done{background:radial-gradient(circle at 40% 35%,#d7ffe4,#6fd39a 60%,#2f8a57);box-shadow:0 5px 0 #1d5a39,0 6px 14px rgba(0,0,0,.35)}
+.node:disabled{background:#4a5651;color:#c3ccc7;border-color:rgba(255,255,255,.25);box-shadow:0 5px 0 #2a332f;cursor:not-allowed}
+.node:disabled svg{width:22px;height:22px}
+.node.gate{border-radius:24px 24px 12px 12px}
+.node.current{width:76px;height:76px;font-size:28px;animation:pulse 1.4s ease-in-out infinite}
+.play-tab{margin-top:7px;padding:3px 12px;border-radius:999px;background:var(--rose);color:#fff;font:800 12px var(--body);letter-spacing:.12em;box-shadow:0 3px 0 #a83a6d}
+.arc{position:absolute;top:-17px;left:50%;transform:translateX(-50%);display:flex;font-size:17px;line-height:1;color:var(--gold);text-shadow:0 1px 2px rgba(0,0,0,.7)}
+.arc span:first-child{transform:translateY(6px) rotate(-20deg)}
+.arc span:last-child{transform:translateY(6px) rotate(20deg)}
+.arc .off{color:rgba(255,255,255,.35)}
+.lira-pin{position:absolute;z-index:2;width:64px;height:92px;margin-left:-32px;pointer-events:none}
+.lira-pin img{display:block;width:100%;height:100%;object-fit:contain;animation:bob 1.6s ease-in-out infinite;filter:drop-shadow(0 4px 4px rgba(0,0,0,.45))}
+.sign{position:absolute;transform:translate(-50%,50%);display:flex;flex-direction:column;align-items:center;pointer-events:none}
+.sign div{background:#8a6038;border:2px solid #5a3d22;border-radius:9px;padding:4px 10px;text-align:center;box-shadow:0 3px 0 #4a3019}
+.sign span{display:block;font:800 9px var(--body);letter-spacing:.12em;text-transform:uppercase;color:#ffe2a8}
+.sign b{font:800 14px/1.1 var(--display);color:#fff6e0;white-space:nowrap}
+.sign i{width:5px;height:20px;background:#5a3d22;border-radius:2px}
+.daily-float{position:absolute;z-index:3;left:max(12px,env(safe-area-inset-left,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));border:0;border-radius:16px;padding:10px 14px;font:800 14px var(--body);background:var(--gold);color:var(--ink);box-shadow:0 4px 0 var(--gold-deep),0 6px 16px rgba(0,0,0,.45)}
+.daily-float:disabled{background:#4a5651;color:#c3ccc7;box-shadow:0 4px 0 #2a332f;cursor:default}
+@keyframes pulse{50%{transform:scale(1.07);box-shadow:0 5px 0 #8a5c12,0 0 0 10px rgba(255,209,102,.25)}}
+@keyframes bob{50%{transform:translateY(-5px)}}
+
+/* ---------- level ---------- */
+#game{background:var(--gbg)}
+.hud{display:flex;align-items:stretch;gap:8px;padding:10px max(12px,env(safe-area-inset-right,0px)) 4px max(12px,env(safe-area-inset-left,0px))}
+.hud-left{display:flex;flex-direction:column;gap:6px}
+.stat.gear{font-size:16px;padding:4px 9px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 4px;border-bottom:1px solid rgba(31,42,36,.1);text-align:left;font:800 16px var(--body);color:var(--ink)}
+.toggle-row small{display:block;font:600 12px var(--body);color:var(--muted)}
+.switch{flex:none;width:54px;height:32px;border-radius:999px;border:0;background:#c9cfcb;position:relative;cursor:pointer;transition:background .2s}
+.switch::after{content:'';position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s}
+.switch[aria-checked="true"]{background:var(--moss)}
+.switch[aria-checked="true"]::after{transform:translateX(22px)}
+.icon-btn{width:46px;height:34px;border-radius:12px;border:2px solid #fff;background:rgba(255,250,236,.92);color:var(--ink);box-shadow:0 3px 8px rgba(60,90,70,.25);font:800 14px var(--body)}
+.hud-panel{flex:1;min-width:0;display:flex;align-items:center;gap:10px;background:rgba(255,250,236,.92);color:var(--ink);border:2px solid #fff;border-radius:18px;padding:6px 10px;box-shadow:0 4px 12px rgba(60,90,70,.25)}
+.moves{display:flex;flex-direction:column;align-items:center;line-height:1;min-width:58px;padding-right:10px;border-right:1px solid rgba(31,42,36,.12)}
+.moves b{font:800 40px/1 var(--display);font-variant-numeric:tabular-nums}
+.moves span{font:800 10px var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.moves.low b{color:#e0483a}
+.goal-row{flex:1;min-width:0;display:flex;flex-wrap:wrap;justify-content:center;gap:6px}
+.goal{display:flex;align-items:center;gap:4px;background:#fff;border:1px solid rgba(31,42,36,.1);border-radius:14px;padding:3px 10px 3px 3px;font:800 20px var(--display);font-variant-numeric:tabular-nums}
+.goal canvas{width:36px;height:36px}
+.goal.ok{border-color:#6fd39a;color:var(--moss)}
+.goal.hit{animation:hit .25s}
+.board-wrap{position:relative;flex:1;min-height:0}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.bottom{position:relative;display:flex;align-items:flex-end;gap:6px;padding:4px max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.lira-corner{position:relative;flex:none}
+.lira-corner .avatar{width:58px;height:58px;border-radius:50%;border:3px solid var(--gold);overflow:hidden;background:#2a6b4c}
+.avatar svg,.avatar img{display:block;width:100%;height:100%;object-fit:cover}
+.lira-corner .avatar img{animation:breathe 3.2s ease-in-out infinite}
+@keyframes breathe{50%{transform:scale(1.04) translateY(-1px)}}
+.speech{position:absolute;left:0;bottom:calc(100% + 12px);z-index:4;width:max-content;max-width:min(300px,80vw);margin:0;background:var(--parch);color:var(--ink);border-radius:14px;padding:8px 12px;font:700 14px/1.35 var(--body);box-shadow:0 6px 18px rgba(0,0,0,.35);opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s;pointer-events:none}
+.speech.on{opacity:1;transform:none}
+.speech::after{content:"";position:absolute;left:22px;top:100%;border:7px solid transparent;border-top-color:var(--parch)}
+.boosters{flex:1;display:flex;justify-content:space-around;gap:2px}
+.spell{display:flex;flex-direction:column;align-items:center;gap:2px;width:66px;background:none;border:0;padding:0;color:var(--ink);font:800 11px/1.1 var(--body);text-align:center;text-shadow:0 0 4px #fff,0 0 2px #fff}
+.spell .orb{position:relative;width:54px;height:54px;border-radius:50%;padding:6px;background:conic-gradient(var(--col) calc(var(--p)*1%),rgba(255,255,255,.75) 0);box-shadow:0 3px 8px rgba(60,90,70,.3)}
+.spell .orb i{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;background:#fff8e6}
+.spell canvas{width:28px;height:28px}
+.spell .cnt{font:800 11px var(--body);color:var(--ink);font-variant-numeric:tabular-nums}
+.spell .n{position:absolute;right:-4px;top:-4px;min-width:20px;height:20px;border-radius:10px;background:var(--gold);color:var(--ink);display:grid;place-items:center;font-size:12px}
+.spell.ready{color:var(--gold)}
+.spell.ready .orb{box-shadow:0 0 16px rgba(255,209,102,.8);animation:glow 1.2s ease-in-out infinite}
+.spell.active .orb i{background:var(--gold)}
+.spell.burst .orb::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:4px solid var(--gold);animation:ring .8s ease-out forwards}
+@keyframes glow{50%{box-shadow:0 0 4px rgba(255,209,102,.3)}}
+@keyframes ring{to{transform:scale(1.9);opacity:0}}
+@keyframes hit{50%{transform:scale(1.18)}}
+.flyer{position:absolute;z-index:6;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;pointer-events:none;box-shadow:0 0 10px rgba(255,255,255,.75)}
+
+/* ---------- modal + shop ---------- */
+.modal{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:rgba(30,60,80,.42);padding:16px max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px))}
+.card{width:100%;max-width:360px;max-height:100%;overflow-y:auto;background:var(--parch);color:var(--ink);border-radius:24px;padding:22px 18px 16px;display:flex;flex-direction:column;gap:10px;text-align:center;animation:pop .35s cubic-bezier(.2,1.4,.4,1)}
+.card h2{margin:0;font:800 30px/1.05 var(--display);text-wrap:balance}
+.card .eyebrow{margin:0;font:800 11px var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--moss)}
+.card p.muted{margin:0;color:var(--muted);font-size:15px;line-height:1.5}
+.card .avatar{width:96px;height:96px;margin:0 auto;border-radius:50%;border:3px solid var(--gold);overflow:hidden;background:#2a6b4c}
+.btn{width:100%;border:0;border-radius:16px;padding:13px 16px;font:800 18px var(--display);background:var(--gold);color:var(--ink);box-shadow:0 5px 0 var(--gold-deep)}
+.btn:active:not(:disabled){transform:translateY(3px);box-shadow:0 2px 0 var(--gold-deep)}
+.btn.green{background:#6fd39a;box-shadow:0 5px 0 #2f8a57}
+.btn.plain{background:#fff;box-shadow:0 5px 0 var(--parch-2);border:2px solid var(--parch-2)}
+.btn.ghost{background:none;box-shadow:none;color:var(--muted);padding:6px;font-size:16px}
+.btn:disabled{opacity:.5;cursor:default}
+.wallet{display:flex;align-items:center;justify-content:center;gap:10px;margin:2px auto 12px;padding:6px 6px 6px 14px;border-radius:999px;background:#fff4d6;border:2px solid var(--gold);width:max-content;max-width:100%;font:800 15px var(--body);color:var(--ink)}
+.wallet .coin{display:inline-block;width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff1b0,var(--gold) 55%,var(--gold-deep));box-shadow:inset 0 -1px 0 rgba(0,0,0,.2);vertical-align:-3px;margin-right:4px}
+.wallet button{border:0;border-radius:999px;padding:6px 12px;background:var(--gold);color:var(--ink);font:800 13px var(--body);cursor:pointer}
+.ad-tag{font:800 11px var(--body);letter-spacing:.06em;background:var(--ink);color:var(--gold);border-radius:6px;padding:2px 7px;margin-right:6px;vertical-align:3px}
+.feat{display:grid;gap:6px;text-align:left;background:#fff;border:2px solid var(--parch-2);border-radius:18px;padding:12px}
+.feat .new{justify-self:start;background:var(--rose);color:#fff;font:800 11px var(--body);letter-spacing:.1em;text-transform:uppercase;padding:2px 9px;border-radius:999px}
+.feat canvas{width:100%;height:auto;aspect-ratio:300/110;border-radius:12px;background:#1d4a37}
+.feat h3{margin:0;font:800 21px/1.1 var(--display)}
+.feat ol{margin:0;padding-left:20px;font-size:14.5px;line-height:1.45;display:grid;gap:4px}
+.label{margin:4px 0 0;font:800 11px var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);text-align:left}
+.goal-rows{display:grid;gap:6px;text-align:left}
+.goal-rows div{display:flex;align-items:center;gap:10px;font:700 15px/1.3 var(--body)}
+.goal-rows canvas{width:30px;height:30px;flex:none}
+.hud-left{display:flex;gap:6px}
+.goal-list{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
+.goal-list .goal{background:#fff;border-color:var(--parch-2);color:var(--ink)}
+.big-stars{font-size:48px;line-height:1;letter-spacing:6px;color:var(--gold-deep)}
+.big-stars span{display:inline-block;animation:starIn .5s backwards}
+.big-stars .off{color:#dccfb0}
+.rewards{display:flex;justify-content:center;gap:16px;font:800 16px var(--body)}
+.ad-box{height:150px;border-radius:16px;display:grid;place-items:center;font:800 56px var(--display);background:repeating-linear-gradient(45deg,#efe2c2 0 12px,#f7eed8 12px 24px)}
+.ad-bar{height:6px;border-radius:3px;background:var(--parch-2);overflow:hidden}
+.ad-bar i{display:block;height:100%;width:0;background:var(--rose);transition:width 3s linear}
+#shop{overflow-y:auto;background:linear-gradient(#151032,#0c1d17);gap:10px;padding:14px max(16px,env(safe-area-inset-right,0px)) 20px max(16px,env(safe-area-inset-left,0px))}
+.shop-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.shop-head h2{margin:0;font:800 30px var(--display)}
+.section-label{margin:10px 0 0;font:800 11px var(--body);letter-spacing:.14em;text-transform:uppercase;color:#a9bfb2}
+.item{display:grid;grid-template-columns:64px 1fr;gap:12px;align-items:center;background:var(--parch);color:var(--ink);border-radius:20px;padding:12px}
+.item .thumb{width:64px;height:64px;border-radius:16px;background:#2a6b4c;overflow:hidden;display:grid;place-items:center;font-size:30px}
+.item .thumb img{width:100%;height:100%;object-fit:cover}
+.item h3{margin:0;font:800 19px/1.1 var(--display)}
+.item p{margin:2px 0 8px;color:var(--muted);font-size:14px;line-height:1.4}
+.item .btn{padding:9px 12px;font-size:16px}
+.tag{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;background:var(--rose);color:#fff;font:800 11px var(--body);vertical-align:3px}
+.notes{margin:0;padding-left:18px;color:#c9d6cc;font-size:14px;line-height:1.6}
+#toast{position:absolute;left:50%;bottom:90px;transform:translateX(-50%);z-index:20;background:var(--ink);color:var(--parch);border:1px solid rgba(255,255,255,.15);border-radius:999px;padding:10px 16px;font:700 14px var(--body);white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
+#unlock{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;overflow:hidden;background:var(--ubg);padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
+.u-stage{position:relative;width:180px;height:230px}
+.u-gate{position:absolute;inset:0;border-radius:90px 90px 8px 8px;background:radial-gradient(circle at 50% 42%,#fffbe0,#ffd166 28%,#8fd3ff 66%,#2a3b6a);box-shadow:0 0 70px rgba(255,220,140,.65);overflow:hidden;perspective:600px}
+.u-gate i{position:absolute;top:0;bottom:0;width:50%;background:linear-gradient(#6b4a2a,#3f2a16);border:3px solid #2a1a0c}
+.u-gate i.l{left:0;border-radius:90px 0 0 8px;transform-origin:left;animation:doorL 1.3s .7s both}
+.u-gate i.r{right:0;border-radius:0 90px 8px 0;transform-origin:right;animation:doorR 1.3s .7s both}
+.u-lira{position:absolute;left:50%;bottom:-24px;width:110px;height:157px;margin-left:-55px;animation:walkIn 1.6s 1.8s both}
+.u-lira img{width:100%;height:100%;object-fit:contain}
+.fog{position:absolute;inset:-20%;pointer-events:none;background:radial-gradient(closest-side,rgba(235,240,245,.96),rgba(235,240,245,0));animation:fogL 1.7s .2s both}
+.fog.f2{animation-name:fogR}
+.u-title{position:relative;z-index:2;text-align:center;animation:stamp .5s 1.1s both}
+.u-title span{font:800 12px var(--body);letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+.u-title h2{margin:2px 0;font:800 40px/1 var(--display)}
+.u-title p{margin:0;color:#d5ddd7;max-width:30ch}
+#unlock .btn{position:relative;z-index:2;max-width:280px;animation:pop .4s 2.6s both}
+@keyframes doorL{to{transform:rotateY(-100deg)}}
+@keyframes doorR{to{transform:rotateY(100deg)}}
+@keyframes walkIn{from{transform:translateY(60px) scale(1.15)}to{transform:translateY(-70px) scale(.45);opacity:0}}
+@keyframes fogL{to{transform:translateX(-90%);opacity:0}}
+@keyframes fogR{to{transform:translateX(90%);opacity:0}}
+@keyframes stamp{from{transform:scale(2.2);opacity:0}}
+.confetti{position:absolute;inset:0;z-index:12;pointer-events:none;overflow:hidden}
+.confetti i{position:absolute;top:-14px;width:8px;height:13px;border-radius:2px;animation:fall 2.6s linear forwards}
+@keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}
+.card .body{width:110px;height:150px;margin:-6px auto -4px}
+.card .body img{display:block;width:100%;height:100%;object-fit:contain}
+.dance img{animation:dance .7s ease-in-out infinite}
+@keyframes dance{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-8px) rotate(6deg)}}
+.shake{animation:shake .45s 2}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+@keyframes pop{from{transform:scale(.85);opacity:0}}
+@keyframes starIn{from{transform:scale(0) rotate(-45deg)}}
+@media (prefers-reduced-motion:reduce){.card,.big-stars span,.lira-pin img,.lira-corner .avatar img,.node.current,.spell.ready .orb,.spell.burst .orb::after,.dance img,.shake,.goal.hit,#unlock *{animation:none!important}.ad-bar i{transition:none}}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <section id="map" class="screen">
+    <header class="topbar">
+      <div class="me"><div class="avatar" id="mapAvatar"></div><div><b>Lira</b><div class="xp"><span id="lvLabel">Lv 1</span><i><b id="xpBar"></b></i></div></div></div>
+      <span class="grow"></span>
+      <span class="stat" id="livesStat"></span>
+      <span class="stat" id="coinsStat"></span>
+      <button class="stat" id="shopBtn">Shop</button>
+      <button class="stat gear" id="setBtn" aria-label="Settings">⚙</button>
+    </header>
+    <div id="mapScroll"><div id="worlds"></div></div>
+    <button class="daily-float" id="dailyBtn"></button>
+  </section>
+
+  <section id="game" class="screen" hidden>
+    <div class="hud">
+      <div class="hud-left"><button class="icon-btn" id="exitBtn" aria-label="Back to map">Map</button><button class="icon-btn" id="helpBtn" aria-label="How to play this level">?</button><button class="icon-btn" id="setBtnGame" aria-label="Settings">⚙</button></div>
+      <div class="hud-panel"><div class="moves" id="movesBox"><b id="movesN">0</b><span>Moves</span></div><div class="goal-row" id="goalRow"></div></div>
+    </div>
+    <div class="board-wrap" id="boardWrap"><canvas id="cv" aria-label="Rune board"></canvas></div>
+    <div class="bottom">
+      <div class="lira-corner"><p class="speech" id="speech" role="status"></p><div class="avatar" id="gameAvatar"></div></div>
+      <div class="boosters" id="spellBar"></div>
+    </div>
+  </section>
+
+  <section id="shop" class="screen" hidden>
+    <div class="shop-head"><h2>Shop</h2><span class="stat" id="shopCoins"></span></div>
+    <p class="section-label">Coins · real money (demo)</p>
+    <div class="list" id="coinList"></div>
+    <p class="section-label">Boosters &amp; lives · coins</p>
+    <div class="list" id="boostList"></div>
+    <p class="section-label">Lira's outfits</p>
+    <div class="list" id="outfitList"></div>
+    <p class="section-label">Sound &amp; vibration</p>
+    <div class="list" id="setList"></div>
+    <p class="section-label">Privacy &amp; ads</p>
+    <div class="list" id="privList"></div>
+    <p class="section-label">Testing</p>
+    <div class="list" id="devList"></div>
+    <button class="btn" id="shopBack">Back to map</button>
+  </section>
+
+  <div id="modal" class="modal" hidden><div class="card" id="card" role="dialog" aria-modal="true"></div></div>
+  <div id="unlock" hidden></div>
+  <div id="toast" hidden></div>
+</div>
+
+<script src="sound.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const C=7,R=8,MAX_LIVES=5,LIFE_MS=20*60*1000;
+
+/* ---------- content ---------- */
+const TYPES=[
+  {name:'Leaf',c1:'#a6f0a0',c2:'#2e9e4f'},
+  {name:'Sun',c1:'#fff0a0',c2:'#e9a920'},
+  {name:'Drop',c1:'#b8e6ff',c2:'#2f7fd1'},
+  {name:'Bloom',c1:'#ffc9de',c2:'#e05597'},
+  {name:'Crystal',c1:'#e2cbff',c2:'#7b4fd6'},
+  {name:'Ember',c1:'#ffd0a0',c2:'#e5672e'},
+];
+const WORLDS=[
+  {name:'Whispering Woods',blurb:'Where the first runes fell asleep.',bg:'linear-gradient(#bfe8c4,#8fd09a)',wbg:'linear-gradient(135deg,#a8e0b0,#7cc28a)',deco:'woods'},
+  {name:'Crystal Caves',blurb:'Glowing tunnels under the old roots.',bg:'linear-gradient(#e2d4ff,#c3aef0)',wbg:'linear-gradient(135deg,#d4c2ff,#ad94e6)',deco:'caves'},
+  {name:'Misty Marsh',blurb:'Lira walks the board herself. Clear her a path to the moon gate.',bg:'linear-gradient(#cdeee6,#a6d8cf)',wbg:'linear-gradient(135deg,#bfe8de,#8cc9be)',deco:'marsh'},
+];
+const SOON=[{name:'Sky Temple',blurb:'Runes that float upward.'}];
+const SPELLS=[
+  {id:'sun',t:1,name:'Sunbeam',need:18,target:true},
+  {id:'crystal',t:4,name:'Crystal Burst',need:22,target:true},
+  {id:'leaf',t:0,name:"Nature's Gift",need:26,target:false},
+];
+// level index where each mechanic is introduced; before that it stays hidden/off
+const FEATURE_AT={spells:3,power:9};
+// Pacing: 3 short warm-up levels, then each chapter brings one new feature (or a new look) and stays with it for a few levels
+const L=(w,ch,moves,types,goals,feat,tip,layout)=>({w,ch,moves,types,goals,feat,tip,layout});
+const LEVELS=[
+  L(0,0,12,5,[{c:0,n:10}],'match',"Drag a rune onto its neighbour to swap them. Let's gather 10 leaves!"),
+  L(0,0,14,5,[{c:1,n:12}],null,"Nice! Now let's gather some sun runes."),
+  L(0,0,16,5,[{c:3,n:12},{c:2,n:12}],null,"Two kinds at once. Think before you swap!"),
+  L(0,1,18,5,[{c:4,n:12},{c:1,n:10}],'spells',"I charged Sunbeam for you! Tap it below, then tap a column."),
+  L(0,1,20,5,[{c:0,n:18},{c:4,n:14}],null,"Save Crystal Burst for a big crowd of runes."),
+  L(0,1,20,5,[{c:1,n:20},{c:3,n:16}],null,"Running low? Nature's Gift buys two more moves."),
+  L(0,2,15,5,[{moss:1}],'moss',"Burn the runes sitting on the moss to clear it.",
+    ['.......','.......','.......','..mmm..','..mmm..','.......','.......','.......']),
+  L(0,2,22,5,[{moss:1},{c:2,n:12}],null,"The moss spreads around the edges now.",
+    ['.......','.mmmmm.','.m...m.','.m...m.','.m...m.','.m...m.','.mmmmm.','.......']),
+  L(0,2,21,5,[{moss:1},{c:0,n:14}],null,"A big patch! Crystal Burst helps a lot here.",
+    ['.......','.......','.......','mmmmmmm','mmmmmmm','mmmmmmm','.......','.......']),
+  L(1,3,22,6,[{c:4,n:16}],'power',"Line up 4 or 5 runes to make power runes!"),
+  L(1,3,22,6,[{c:5,n:16},{c:2,n:16}],null,"Try to set up an L shape for a Burst."),
+  L(1,3,28,6,[{moss:1},{c:4,n:14}],null,"Power runes clear moss from far away.",
+    ['mm...mm','m.....m','.......','.......','.......','.......','m.....m','mm...mm']),
+  L(1,4,22,6,[{vine:1}],'vines',"Match the wrapped runes to snap the vines.",
+    ['.......','.......','..v.v..','.......','..v.v..','.......','.......','.......']),
+  L(1,4,28,6,[{vine:1},{c:3,n:12}],null,"More vines! A Light Arrow snaps a whole row of them.",
+    ['.......','.......','v.v.v.v','.......','.v.v.v.','.......','v.v.v.v','.......']),
+  L(1,4,26,6,[{vine:1},{moss:1}],null,"Vines and moss together. You've got this!",
+    ['.......','.......','..bbb..','.m...m.','.m...m.','..bbb..','.......','.......']),
+  L(2,5,17,5,[{lira:1}],'lira',"Burn runes right next to me and I'll step toward the gate!",
+    ['...G...','.......','.......','.......','.......','.......','.......','...L...']),
+  L(2,5,19,5,[{lira:1},{c:1,n:12}],null,"The gate is off to the side this time.",
+    ['...G...','.......','.......','.......','.......','.......','.......','.L.....']),
+  L(2,5,26,6,[{lira:1},{vine:1}],null,"Vines block my way. Break them so I can pass!",
+    ['...G...','.......','..vvv..','.......','..vvv..','.......','.......','...L...']),
+  L(2,6,28,6,[{lira:1},{moss:1}],null,"The moon is rising. Let's hurry!",
+    ['...G...','.......','..bbb..','mm...mm','mm...mm','..bbb..','.......','...L...']),
+  L(2,6,32,6,[{lira:1},{moss:1},{c:4,n:12}],null,"The last gate of the marsh. Lead me home!",
+    ['G......','.......','.......','mmmmmmm','mmmmmmm','.......','.......','......L']),
+];
+// one look per chapter
+const LOOKS=[
+  {name:'Mossy Glade',img:'art/bg-0-mossy-glade.jpg?v=2',tag:'Warm-up',bg:'linear-gradient(#c8efc4,#9ed79a)',frame:'#7ed35f',cell:'#c8f5c0',deco:['fireflies','mushrooms']},
+  {name:'Sunlit Clearing',img:'art/bg-1-sunlit-clearing.jpg?v=2',tag:"New: Lira's spells",bg:'linear-gradient(#f4f0b8,#cfe59a)',frame:'#ffd166',cell:'#fff2b0',deco:['rays','pollen']},
+  {name:'Old Roots',img:'art/bg-2-old-roots.jpg?v=2',tag:'New: Moss',bg:'linear-gradient(#f5e0b8,#d8c08e)',frame:'#c79a64',cell:'#e8cfa8',deco:['fireflies','roots']},
+  {name:'Crystal Mouth',img:'art/bg-3-crystal-mouth.jpg?v=2',tag:'New: Power runes',bg:'linear-gradient(#e6d8ff,#c8b2f2)',frame:'#c9a2ff',cell:'#e2cbff',deco:['sparkles','icicles']},
+  {name:'Glow Pools',img:'art/bg-4-glow-pools.jpg?v=2',tag:'New: Vines',bg:'linear-gradient(#c8f0f4,#9ed8e6)',frame:'#8fd3ff',cell:'#b8e6ff',deco:['ripples','bigcrystals']},
+  {name:'Foggy Reeds',img:'art/bg-5-foggy-reeds.jpg?v=2',tag:'New: Lira on the board',bg:'linear-gradient(#d6f2e8,#b0dccf)',frame:'#9fe0d6',cell:'#d4f2ee',deco:['fog','reeds']},
+  {name:'Moonrise',img:'art/bg-6-moonrise.jpg?v=2',tag:'Finale',bg:'linear-gradient(#f2d8ec,#c8b8ec)',frame:'#d9e6ff',cell:'#e6eeff',deco:['stars','moon','lanterns']},
+];
+const FEATURES={
+  match:{title:'Match runes',art:'match',lines:['Swap two runes that sit next to each other.','Line up 3 or more of the same rune to burn them.','Every burned rune counts toward the goals at the top.']},
+  spells:{title:"Lira's spells",art:'spells',lines:['Every rune you burn charges one of the spells at the bottom.','Yellow charges Sunbeam (clears a column). Purple charges Crystal Burst (blasts a 3×3 area). Green charges Nature\'s Gift (+2 moves).','When a spell glows, tap it, then tap the board. Spells don\'t use a move.']},
+  moss:{title:'Moss',art:'moss',lines:['Moss grows under some runes.','Burn the rune sitting on the moss to clear that tile.','Clear every moss tile to win.']},
+  vines:{title:'Vines',art:'vines',lines:["Vines wrap a rune so you can't move it.",'Make a match that includes the wrapped rune to snap the vine.','Stuck? Thorn Strike (bottom right) smashes any one rune.']},
+  power:{title:'Power runes',arts:['arrow','burst','prism'],lines:['Match 4 in a row: a Light Arrow that clears its row or column.','Match in an L or T shape: a Burst that blasts everything around it.','Match 5 in a row: a Prism. Swap it with any rune to burn every rune of that kind.']},
+  arrow:{title:'Light Arrow',art:'arrow',lines:['Match 4 in a row to create a Light Arrow.','When it burns, it clears its whole row or column.']},
+  burst:{title:'Burst rune',art:'burst',lines:['Match in an L or T shape to create a Burst rune.','When it burns, it blasts every rune around it.']},
+  prism:{title:'Prism',art:'prism',lines:['Match 5 in a row to create a Prism.','Swap the Prism with any rune to burn every rune of that kind.']},
+  lira:{title:'Lira on the board',art:'lira',lines:['Lira stands on the board. Bring her to the glowing moon gate.',"You can't drag her. Burn runes right next to her and she walks into the gaps, as long as each step brings her closer to the gate.",'Tip: a Sunbeam on her column opens the way up.']},
+  liravines:{title:'Blocked path',art:'vines',lines:["Vines block Lira's way.",'Snap the vines along her path so she can walk through.']},
+};
+const OUTFITS={
+  forest:{name:'Forest Ranger',cape:'#2f8a57',trim:'#ffd166'},
+  moon:{name:'Moonlight Cloak',cape:'#3a5fc8',trim:'#d9e6ff'},
+  ember:{name:'Ember Mantle',cape:'#c8463a',trim:'#ffb347'},
+};
+const CHEERS=['','','Nice!','Magical!','Enchanting!','Legendary!'];
+
+/* ---------- save ---------- */
+const DEF={coins:500,lives:5,livesAt:0,stars:[],xp:0,thorn:3,outfit:'forest',outfits:['forest'],starter:false,intro:false,daily:'',dailyAd:'',unlockAll:false,adsPersonal:true,pid:'',sfx:true,music:true,haptics:true};
+const today=()=>new Date().toISOString().slice(0,10);
+let save=load();
+Sound.set({sfx:save.sfx,music:save.music,haptics:save.haptics});
+if(!save.pid){save.pid='LRF-'+Array.from(crypto.getRandomValues(new Uint8Array(4)),b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();persist()}
+function load(){try{return Object.assign(JSON.parse(JSON.stringify(DEF)),JSON.parse(localStorage.getItem('lira-rf')||'{}'))}catch(e){return JSON.parse(JSON.stringify(DEF))}}
+function persist(){try{localStorage.setItem('lira-rf',JSON.stringify(save))}catch(e){}}
+function regenLives(){
+  const now=Date.now();
+  while(save.lives<MAX_LIVES&&now-save.livesAt>=LIFE_MS){save.lives++;save.livesAt+=LIFE_MS}
+  if(save.lives>=MAX_LIVES)save.livesAt=now;
+}
+function loseLife(){Sound.play('lifeLost');regenLives();if(save.lives>=MAX_LIVES)save.livesAt=Date.now();save.lives=Math.max(0,save.lives-1);persist()}
+const liraLevel=()=>1+Math.floor(save.xp/100);
+
+/* ---------- Lira avatar ---------- */
+// Lira's painted art (generated in Gemini, processed by art/process.py)
+const FACE_MOODS=['normal','happy','cheer','worried','sad','wow'];
+const BODY_POSES={happy:'wave',wave:'wave',cheer:'cheer',sad:'sad',walk:'walk'};
+const OUTFIT_ART=['moon','ember'];
+const outfitSuffix=(outfit,mood)=>OUTFIT_ART.includes(outfit)&&(mood==null||mood==='normal'||mood==='happy'||mood==='wave')?'-'+outfit:'';
+function liraSVG(outfit,mood){const m=FACE_MOODS.includes(mood)?mood:'normal',sfx=m==='normal'?outfitSuffix(outfit,m):'';return `<img src="art/face-${m}${sfx}.jpg" alt="">`}
+function liraBodySVG(outfit,mood){const p=BODY_POSES[mood]||'wave';return `<img src="art/body-${p}${p==='wave'?outfitSuffix(outfit,'wave'):''}.png" alt="">`}
+const liraImg=new Image();
+FACE_MOODS.forEach(m=>{new Image().src=`art/face-${m}.jpg`});
+function refreshLiraImg(){liraImg.src=`art/face-normal${outfitSuffix(save.outfit,'normal')}.jpg`}
+function paintAvatars(mood){
+  ['#mapAvatar','#gameAvatar'].forEach(s=>$(s).innerHTML=liraSVG(save.outfit,mood));
+}
+
+/* ---------- rune drawing ---------- */
+function runePath(g,t,s){
+  g.beginPath();
+  if(t===0){g.moveTo(0,-s);g.quadraticCurveTo(s*1.1,-s*.1,0,s);g.quadraticCurveTo(-s*1.1,-s*.1,0,-s)}
+  else if(t===1){for(let i=0;i<16;i++){const a=i*Math.PI/8-Math.PI/2,rr=i%2?s*.66:s;i?g.lineTo(Math.cos(a)*rr,Math.sin(a)*rr):g.moveTo(Math.cos(a)*rr,Math.sin(a)*rr)}}
+  else if(t===2){g.moveTo(0,-s);g.bezierCurveTo(s*.95,-s*.05,s*.85,s*.95,0,s*.95);g.bezierCurveTo(-s*.85,s*.95,-s*.95,-s*.05,0,-s)}
+  else if(t===3){for(let i=0;i<5;i++){const a=i*Math.PI*2/5-Math.PI/2,px=Math.cos(a)*s*.48,py=Math.sin(a)*s*.48;g.moveTo(px+s*.52,py);g.arc(px,py,s*.52,0,Math.PI*2)}}
+  else if(t===4){g.moveTo(0,-s);g.lineTo(s*.82,-s*.28);g.lineTo(s*.48,s*.92);g.lineTo(-s*.48,s*.92);g.lineTo(-s*.82,-s*.28)}
+  else{for(let i=0;i<6;i++){const a=i*Math.PI/3;i?g.lineTo(Math.cos(a)*s*.95,Math.sin(a)*s*.95):g.moveTo(Math.cos(a)*s*.95,Math.sin(a)*s*.95)}}
+  g.closePath();
+}
+const RUNE_FILES=['rune-0-leaf','rune-1-sun','rune-2-drop','rune-3-bloom','rune-4-crystal','rune-5-ember'];
+const RUNE_IMG=RUNE_FILES.map(n=>{const im=new Image();im.onload=runeArtLoaded;im.src=`art/${n}.png`;return im});
+const PRISM_IMG=Object.assign(new Image(),{onload:runeArtLoaded,src:'art/rune-prism.png'});
+const MOSS_IMG=Object.assign(new Image(),{onload:runeArtLoaded,src:'art/moss.png'});
+const ready=im=>im.complete&&im.naturalWidth>0;
+// once the gems arrive, repaint the small canvases that were drawn with the vector fallback
+function runeArtLoaded(){const bar=document.getElementById('spellBar');if(bar)bar.dataset.lv='';if(typeof lv!=='undefined'&&lv)renderHUD()}
+function drawRune(g,t,x,y,s,sp,time){
+  if(sp==='prism'&&ready(PRISM_IMG)){g.save();g.translate(x,y);g.rotate(time*.6);g.drawImage(PRISM_IMG,-s*1.15,-s*1.15,s*2.3,s*2.3);g.restore();return}
+  if(t>=0&&ready(RUNE_IMG[t])){
+    g.save();g.translate(x,y);
+    g.drawImage(RUNE_IMG[t],-s*1.18,-s*1.18,s*2.36,s*2.36);
+    if(sp==='h'||sp==='v'){
+      g.save();g.beginPath();g.arc(0,0,s*1.02,0,7);g.clip();g.fillStyle='rgba(255,255,255,.7)';
+      for(const k of[-1,0,1]){sp==='h'?g.fillRect(-s*1.1,k*s*.42-s*.07,s*2.2,s*.14):g.fillRect(k*s*.42-s*.07,-s*1.1,s*.14,s*2.2)}
+      g.restore();g.fillStyle='#fff';
+      for(const d of[-1,1]){g.beginPath();if(sp==='h'){g.moveTo(d*s*1.22,0);g.lineTo(d*s*.9,-s*.2);g.lineTo(d*s*.9,s*.2)}else{g.moveTo(0,d*s*1.22);g.lineTo(-s*.2,d*s*.9);g.lineTo(s*.2,d*s*.9)}g.fill()}
+    }
+    if(sp==='bomb'){g.strokeStyle=`rgba(255,240,170,${.55+.45*Math.sin(time*6)})`;g.lineWidth=s*.16;g.beginPath();g.arc(0,0,s*1.1,0,7);g.stroke()}
+    g.restore();return;
+  }
+  g.save();g.translate(x,y);
+  if(sp==='prism'){
+    const cg=g.createConicGradient?g.createConicGradient(time*2,0,0):null;
+    if(cg){['#ff7a7a','#ffd166','#7ee081','#8fd3ff','#c9a2ff','#ff7a7a'].forEach((c,i)=>cg.addColorStop(i/5,c));g.fillStyle=cg}else g.fillStyle='#e2cbff';
+    g.beginPath();g.arc(0,0,s*.92,0,7);g.fill();
+    g.fillStyle='rgba(255,255,255,.85)';g.beginPath();g.arc(0,0,s*.38,0,7);g.fill();
+    g.fillStyle='#fff';g.beginPath();g.ellipse(-s*.3,-s*.42,s*.18,s*.1,-.6,0,7);g.fill();
+    g.restore();return;
+  }
+  const T=TYPES[t];
+  g.save();g.translate(0,s*.12);runePath(g,t,s);g.fillStyle='rgba(0,0,0,.28)';g.fill();g.restore();
+  const gr=g.createLinearGradient(0,-s,0,s);gr.addColorStop(0,T.c1);gr.addColorStop(1,T.c2);
+  runePath(g,t,s);g.fillStyle=gr;g.fill();
+  g.lineWidth=Math.max(1,s*.08);g.strokeStyle='rgba(255,255,255,.6)';g.stroke();
+  g.fillStyle='rgba(255,255,255,.6)';g.beginPath();g.ellipse(-s*.28,-s*.4,s*.2,s*.1,-.6,0,7);g.fill();
+  if(sp==='h'||sp==='v'){
+    g.save();runePath(g,t,s);g.clip();g.fillStyle='rgba(255,255,255,.8)';
+    for(const k of[-1,0,1]){sp==='h'?g.fillRect(-s,k*s*.42-s*.07,s*2,s*.14):g.fillRect(k*s*.42-s*.07,-s,s*.14,s*2)}
+    g.restore();
+    g.fillStyle='#fff';
+    for(const d of[-1,1]){g.beginPath();if(sp==='h'){g.moveTo(d*s*1.18,0);g.lineTo(d*s*.86,-s*.2);g.lineTo(d*s*.86,s*.2)}else{g.moveTo(0,d*s*1.18);g.lineTo(-s*.2,d*s*.86);g.lineTo(s*.2,d*s*.86)}g.fill()}
+  }
+  if(sp==='bomb'){
+    g.strokeStyle=`rgba(255,240,170,${.55+.45*Math.sin(time*6)})`;g.lineWidth=s*.14;g.beginPath();g.arc(0,0,s*1.06,0,7);g.stroke();
+    g.fillStyle='#fff';g.beginPath();for(let i=0;i<8;i++){const a=i*Math.PI/4,rr=i%2?s*.12:s*.32;i?g.lineTo(Math.cos(a)*rr,Math.sin(a)*rr):g.moveTo(Math.cos(a)*rr,Math.sin(a)*rr)}g.closePath();g.fill();
+  }
+  g.restore();
+}
+function drawMoss(g,x,y,S){
+  if(typeof MOSS_IMG!=='undefined'&&MOSS_IMG.complete&&MOSS_IMG.naturalWidth){g.drawImage(MOSS_IMG,x-S*.03,y-S*.03,S*1.06,S*1.06);return}
+  g.fillStyle='#3f2d16';g.beginPath();g.roundRect(x+2,y+3,S-4,S-4,S*.22);g.fill();
+  g.fillStyle='#7a5a30';g.beginPath();g.roundRect(x+2,y+1,S-4,S-6,S*.22);g.fill();
+  g.fillStyle='#8fd35f';
+  for(let i=0;i<7;i++){const a=(i*2.3+x*.07+y*.11)%6.28,rr=S*(.3+(i%3)*.05);g.beginPath();g.arc(x+S/2+Math.cos(a)*rr,y+S/2+Math.sin(a)*rr,S*.07,0,7);g.fill()}
+}
+function drawVine(g,x,y,S,time){
+  g.save();g.translate(x,y);g.strokeStyle='#3e9b3a';g.lineWidth=S*.08;g.lineCap='round';
+  g.beginPath();g.moveTo(-S*.45,-S*.3);g.bezierCurveTo(-S*.1,-S*.55,S*.1,S*.55,S*.45,S*.3);g.stroke();
+  g.beginPath();g.moveTo(-S*.45,S*.3);g.bezierCurveTo(-S*.1,S*.55,S*.1,-S*.55,S*.45,-S*.3);g.stroke();
+  g.fillStyle='#7ed35f';
+  for(const[lx,ly,a]of[[-S*.3,-S*.36,-.6],[S*.3,S*.36,2.5],[S*.28,-S*.34,.6],[-S*.28,S*.36,-2.5]]){g.beginPath();g.ellipse(lx,ly,S*.1,S*.05,a,0,7);g.fill()}
+  g.restore();
+}
+function goalIcon(goal){
+  const c=document.createElement('canvas');c.width=60;c.height=60;const g=c.getContext('2d');g.scale(2,2);
+  if(goal.c!==undefined)drawRune(g,goal.c,15,14,11,null,0);
+  else if(goal.moss)drawMoss(g,1,1,28);
+  else if(goal.lira){g.strokeStyle='#8fd3ff';g.lineWidth=3;g.beginPath();g.moveTo(6,26);g.lineTo(6,15);g.arc(15,15,9,Math.PI,0);g.lineTo(24,26);g.stroke();g.fillStyle='#f2c26b';g.beginPath();g.arc(15,20,4.5,0,7);g.fill()}
+  else{g.fillStyle='#e9a920';g.beginPath();g.arc(15,15,9,0,7);g.fill();drawVine(g,15,15,28,0)}
+  return c;
+}
+
+/* ---------- board state ---------- */
+const cv=$('#cv'),ctx=cv.getContext('2d');
+let grid=[],moss=[],S=40,ox=0,oy=0,W=0,H=0;
+let lv=null,fx=[],parts=[],texts=[],waiters=[],shake=0,sel=null,hint=null,castMode=null;
+const idx=(r,c)=>r*C+c,rc=k=>[Math.floor(k/C),k%C];
+const randType=()=>Math.floor(Math.random()*lv.def.types);
+const newPiece=(t,c,y)=>({t,sp:null,vine:false,x:c,y,vy:0,lin:false,land:0,grow:1});
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const settle=()=>new Promise(r=>waiters.push(r));
+
+function resize(){
+  const r=$('#boardWrap').getBoundingClientRect(),d=Math.min(2,devicePixelRatio||1);
+  W=r.width;H=r.height;cv.width=Math.round(W*d);cv.height=Math.round(H*d);ctx.setTransform(d,0,0,d,0,0);
+  S=Math.floor(Math.min((W-16)/C,(H-12)/R));ox=(W-C*S)/2;oy=(H-R*S)/2;
+}
+new ResizeObserver(()=>{if(!$('#game').hidden)resize()}).observe($('#boardWrap'));
+
+function buildBoard(def){
+  moss=Array.from({length:R},(_,r)=>Array.from({length:C},(_,c)=>{const ch=def.layout?def.layout[r][c]:'.';return ch==='m'||ch==='b'?1:0}));
+  for(let tries=0;tries<50;tries++){
+    grid=Array.from({length:R},()=>Array(C).fill(null));
+    for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+      const ch=def.layout?def.layout[r][c]:'.';
+      if(ch==='L'){grid[r][c]=Object.assign(newPiece(-2,c,r-R-1),{lira:true});continue}
+      let t;do{t=randType()}while((c>=2&&grid[r][c-1].t===t&&grid[r][c-2].t===t)||(r>=2&&grid[r-1][c].t===t&&grid[r-2][c].t===t));
+      const p=newPiece(t,c,r-R-1);p.vine=ch==='v'||ch==='b';grid[r][c]=p;
+    }
+    if(findMove())break;
+  }
+}
+function swapCells(a,b){
+  const[ra,ca]=rc(a),[rb,cb]=rc(b);const t=grid[ra][ca];grid[ra][ca]=grid[rb][cb];grid[rb][cb]=t;
+  grid[ra][ca].lin=true;grid[rb][cb].lin=true;
+}
+function findRuns(){
+  const runs=[];
+  for(let r=0;r<R;r++){let c=0;while(c<C){const p=grid[r][c];if(!p||p.t<0){c++;continue}let e=c+1;while(e<C&&grid[r][e]&&grid[r][e].t===p.t)e++;if(e-c>=3){const cells=[];for(let k=c;k<e;k++)cells.push(idx(r,k));runs.push({dir:'h',cells})}c=e}}
+  for(let c=0;c<C;c++){let r=0;while(r<R){const p=grid[r][c];if(!p||p.t<0){r++;continue}let e=r+1;while(e<R&&grid[e][c]&&grid[e][c].t===p.t)e++;if(e-r>=3){const cells=[];for(let k=r;k<e;k++)cells.push(idx(k,c));runs.push({dir:'v',cells})}r=e}}
+  return runs;
+}
+function findGroups(){
+  const groups=[];
+  for(const run of findRuns()){
+    let into=null;
+    for(const g of groups){
+      if(g.dead||!run.cells.some(k=>g.cells.has(k)))continue;
+      if(!into)into=g;else{g.cells.forEach(k=>into.cells.add(k));into.runs.push(...g.runs);g.dead=true}
+    }
+    if(!into){into={cells:new Set(),runs:[]};groups.push(into)}
+    run.cells.forEach(k=>into.cells.add(k));into.runs.push(run);
+  }
+  return groups.filter(g=>!g.dead);
+}
+function decideSpecial(g){
+  if(lv.i<FEATURE_AT.power)return null;
+  const maxLen=Math.max(...g.runs.map(r=>r.cells.length));
+  const hasH=g.runs.some(r=>r.dir==='h'),hasV=g.runs.some(r=>r.dir==='v');
+  if(maxLen>=5)return'prism';
+  if(hasH&&hasV)return'bomb';
+  if(maxLen===4)return g.runs.find(r=>r.cells.length===4).dir;
+  return null;
+}
+function choosePos(g,swapIdx){
+  const free=[...g.cells].filter(k=>{const[r,c]=rc(k);return !grid[r][c].sp});
+  if(!free.length)return null;
+  if(swapIdx)for(const k of swapIdx)if(free.includes(k))return k;
+  free.sort((a,b)=>a-b);return free[Math.floor(free.length/2)];
+}
+function effectCells(p,r,c){
+  const out=[];
+  if(p.sp==='h')for(let i=0;i<C;i++)out.push(idx(r,i));
+  else if(p.sp==='v')for(let i=0;i<R;i++)out.push(idx(i,c));
+  else if(p.sp==='bomb'){for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){const rr=r+dr,cc=c+dc;if(rr>=0&&rr<R&&cc>=0&&cc<C)out.push(idx(rr,cc))}}
+  else if(p.sp==='prism'){const types=new Set();grid.flat().forEach(q=>q&&q.t>=0&&types.add(q.t));const T=[...types][Math.floor(Math.random()*types.size)];
+    for(let i=0;i<R;i++)for(let j=0;j<C;j++)if(grid[i][j]&&grid[i][j].t===T)out.push(idx(i,j));}
+  return out;
+}
+function bump(kind,t){
+  let hit=-1;
+  lv.goals.forEach((g,i)=>{if((kind==='c'&&g.c===t)||(kind==='moss'&&g.moss)||(kind==='vine'&&g.vine)){g.got++;if(g.got===g.need)Sound.play('goal');if(g.got<=g.need&&hit<0)hit=i}});
+  return hit;
+}
+const cx=c=>ox+(c+.5)*S,cy=r=>oy+(r+.5)*S;
+const calm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let flash=0,flyBudget=0;
+// a burned rune flies up into its goal chip
+function fly(gi,x,y,c1,c2){
+  if(calm||flyBudget<=0||lv.over)return;flyBudget--;
+  const chip=$(`#goalRow .goal[data-g="${gi}"]`);if(!chip)return;
+  const gr=gameEl.getBoundingClientRect(),cr=cv.getBoundingClientRect(),tr=chip.getBoundingClientRect();
+  const sx=cr.left-gr.left+x,sy=cr.top-gr.top+y,ex=tr.left-gr.left+22,ey=tr.top-gr.top+tr.height/2;
+  const d=document.createElement('div');d.className='flyer';d.style.left=sx+'px';d.style.top=sy+'px';d.style.background=`radial-gradient(circle at 35% 30%,${c1},${c2})`;gameEl.appendChild(d);
+  const mx=(sx+ex)/2+(Math.random()-.5)*90,my=Math.min(sy,ey)-30;
+  const a=d.animate([{transform:'translate(0,0) scale(1)'},{transform:`translate(${mx-sx}px,${my-sy}px) scale(1.25)`},{transform:`translate(${ex-sx}px,${ey-sy}px) scale(.6)`}],{duration:550+Math.random()*250,easing:'ease-in'});
+  a.onfinish=()=>{d.remove();const c=$(`#goalRow .goal[data-g="${gi}"]`);if(c){c.classList.remove('hit');void c.offsetWidth;c.classList.add('hit')}};
+}
+function burst(x,y,col,n){for(let i=0;i<n;i++){const a=Math.random()*6.28,v=60+Math.random()*160;parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-40,life:0,max:.5+Math.random()*.3,col,size:2+Math.random()*3})}}
+function floatText(x,y,txt,size,col){texts.push({x,y,txt,size,col,life:0,max:1})}
+
+async function explode(clear,creates,combo){
+  const done=new Set(),q=[...clear];flyBudget=10;
+  if(clear.size&&!lv.over)Sound.play('match',combo||1);
+  for(const sp of creates.values())Sound.play('special',sp==='prism'?3:sp==='bomb'?2:1);if(creates.size)Sound.haptic('medium');
+  while(q.length){
+    const k=q.pop();if(done.has(k))continue;done.add(k);
+    const[r,c]=rc(k),p=grid[r][c];if(!p||p.lira)continue;
+    if(p.sp&&!creates.has(k)){
+      effectCells(p,r,c).forEach(x=>q.push(x));
+      Sound.play(p.sp==='prism'?'prism':p.sp==='bomb'?'bomb':'line');Sound.haptic(p.sp==='h'||p.sp==='v'?'medium':'heavy');
+      if(p.sp==='h')fx.push({kind:'beam',dir:'h',r,c,life:0,max:.35});
+      else if(p.sp==='v')fx.push({kind:'beam',dir:'v',r,c,life:0,max:.35});
+      else fx.push({kind:'ring',r,c,life:0,max:.4,big:p.sp==='prism'});
+      shake=Math.max(shake,p.sp==='bomb'?8:4);flash=Math.max(flash,p.sp==='prism'?.5:.3);
+    }
+  }
+  let n=0,sx=0,sy=0;
+  for(const k of done){
+    const[r,c]=rc(k),p=grid[r][c];
+    if(moss[r][c]){moss[r][c]=0;Sound.play('moss');const gi=bump('moss');if(gi>=0)fly(gi,cx(c),cy(r),'#c9a46a','#6b4f2a');burst(cx(c),cy(r),'#8fd35f',5)}
+    if(!p||p.lira)continue;
+    n++;sx+=c;sy+=r;
+    if(p.vine){p.vine=false;Sound.play('vineBreak');const gi=bump('vine');if(gi>=0)fly(gi,cx(c),cy(r),'#a6f0a0','#3e9b3a');burst(cx(c),cy(r),'#7ed35f',8)}
+    if(p.t>=0){const gi=bump('c',p.t);if(gi>=0)fly(gi,cx(c),cy(r),TYPES[p.t].c1,TYPES[p.t].c2);addMana(p.t)}
+    if(creates.has(k)){const sp=creates.get(k);p.sp=sp;if(sp==='prism')p.t=-1;burst(cx(c),cy(r),'#fff7c2',12);continue}
+    grid[r][c]=null;
+    fx.push({kind:'pop',r,c,t:p.t,sp:p.sp,life:0,max:.2});
+    burst(cx(c),cy(r),p.t>=0?TYPES[p.t].c2:'#ffffff',6);
+  }
+  if(n)lv.score+=n*60*combo;
+  stepLira();
+  renderHUD();
+  await settle();
+  gravity();
+  await settle();
+}
+function addMana(t){
+  if(lv.over||lv.spellClear||lv.i<FEATURE_AT.spells)return;
+  const s=SPELLS.find(s=>s.t===t);if(!s)return;
+  const before=lv.mana[s.id];lv.mana[s.id]=Math.min(s.need,before+1);if(before<s.need)Sound.play('charge',lv.mana[s.id]/s.need);
+  if(before<s.need&&lv.mana[s.id]===s.need){lv.justCharged=s.id;Sound.play('spellReady');say(`${s.name} is charged! Tap it when you need it.`,'cheer')}
+}
+function findLira(){for(let k=0;k<R*C;k++){const p=grid[Math.floor(k/C)][k%C];if(p&&p.lira)return k}return null}
+function liraDist(){const k=findLira();if(k==null||!lv.gate)return 0;const[r,c]=rc(k);return Math.abs(r-lv.gate[0])+Math.abs(c-lv.gate[1])}
+// Lira steps into one freshly cleared neighbour cell, only if it brings her closer to the gate
+function stepLira(){
+  const k=findLira(),g=lv.goals.find(g=>g.lira);
+  if(k==null||!lv.gate||!g||g.got)return;
+  let[r,c]=rc(k);const[gr,gc]=lv.gate,d=(a,b)=>Math.abs(a-gr)+Math.abs(b-gc),p=grid[r][c];
+  let steps=0;
+  // she keeps walking through freshly cleared cells as long as each step gets her closer, up to 3 steps per clear
+  while(steps<3){
+    let best=null;
+    for(const[dr,dc]of[[-1,0],[0,-1],[0,1],[1,0]]){
+      const rr=r+dr,cc=c+dc;
+      if(rr<0||rr>=R||cc<0||cc>=C||grid[rr][cc])continue;
+      if(d(rr,cc)<d(r,c)&&(!best||d(rr,cc)<d(best[0],best[1])))best=[rr,cc];
+    }
+    if(!best)break;
+    grid[best[0]][best[1]]=p;grid[r][c]=null;[r,c]=best;steps++;setTimeout(()=>Sound.play('step'),steps*110);
+    burst(cx(c),cy(r),'#8fd3ff',8);
+    if(r===gr&&c===gc)break;
+  }
+  if(!steps)return;
+  p.lin=true;
+  if(r===gr&&c===gc){g.got=1;Sound.play('gate');Sound.haptic('heavy');floatText(W/2,oy+R*S*.4,'Lira reached the gate!',28,'#8fd3ff')}
+  else if(steps>1){floatText(cx(c),cy(r)-S*.6,`${steps} steps!`,22,'#8fd3ff');say(`Whee! ${steps} steps at once!`,'happy',true)}
+  else say(['One step closer!','Hop! Keep clearing my path.','I can see the gate glowing!'][Math.floor(Math.random()*3)],'happy',true);
+}
+// Lira is fixed in place for gravity: runes above her stack on her, runes below refill by growing in place
+function gravity(){
+  for(let c=0;c<C;c++){
+    let bottom=R-1;
+    for(let r=R-1;r>=-1;r--){
+      if(r>=0&&!(grid[r][c]&&grid[r][c].lira))continue;
+      const top=r+1;
+      if(top<=bottom){
+        let w=bottom;
+        for(let rr=bottom;rr>=top;rr--){if(grid[rr][c]){if(rr!==w){grid[w][c]=grid[rr][c];grid[rr][c]=null}w--}}
+        for(let rr=w;rr>=top;rr--){const p=newPiece(randType(),c,top===0?rr-(w+1):rr);if(top>0)p.grow=0;grid[rr][c]=p}
+      }
+      bottom=r-1;
+    }
+  }
+}
+async function resolve(swapIdx){
+  let combo=0;
+  for(;;){
+    const groups=findGroups();if(!groups.length)break;
+    combo++;
+    const clear=new Set(),creates=new Map();
+    for(const g of groups){g.cells.forEach(k=>clear.add(k));const sp=decideSpecial(g);if(sp){const pos=choosePos(g,swapIdx);if(pos!=null)creates.set(pos,sp)}}
+    await explode(clear,creates,combo);
+    if(combo>=4)Sound.play('combo');
+    if(combo>=2){floatText(W/2,oy+R*S*.42,CHEERS[Math.min(combo,5)],34,'#ffd166');if(combo>=3)say(['Did you see that?!','The forest is waking up!','Keep it going!'][combo%3],'wow',true)}
+    swapIdx=null;
+  }
+  if(!findMove())await reshuffle();
+}
+function findMove(){
+  const tryPair=(a,b)=>{
+    const[ra,ca]=rc(a),[rb,cb]=rc(b),pa=grid[ra][ca],pb=grid[rb][cb];
+    if(!pa||!pb||pa.vine||pb.vine||pa.lira||pb.lira)return false;
+    if(pa.sp==='prism'||pb.sp==='prism'||(pa.sp&&pb.sp))return true;
+    grid[ra][ca]=pb;grid[rb][cb]=pa;const ok=findRuns().length>0;grid[ra][ca]=pa;grid[rb][cb]=pb;return ok;
+  };
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+    if(c+1<C&&tryPair(idx(r,c),idx(r,c+1)))return[idx(r,c),idx(r,c+1)];
+    if(r+1<R&&tryPair(idx(r,c),idx(r+1,c)))return[idx(r,c),idx(r+1,c)];
+  }
+  return null;
+}
+// On Lira levels, prefer a hint that burns a rune right next to her, on the gate side
+function pickHint(){
+  const k=findLira(),g=lv.goals.find(g=>g.lira);
+  if(k!=null&&lv.gate&&g&&!g.got){
+    const[r,c]=rc(k),[gr,gc]=lv.gate,d=(a,b)=>Math.abs(a-gr)+Math.abs(b-gc),targets=new Set();
+    for(const[dr,dc]of[[-1,0],[0,-1],[0,1],[1,0]]){const rr=r+dr,cc=c+dc;if(rr>=0&&rr<R&&cc>=0&&cc<C&&d(rr,cc)<d(r,c))targets.add(idx(rr,cc))}
+    for(let a=0;a<R*C;a++)for(const b of[a+1,a+C]){
+      const[ra,ca]=rc(a);if(b>=R*C||(b===a+1&&ca===C-1))continue;
+      const[rb,cb]=rc(b),pa=grid[ra][ca],pb=grid[rb][cb];
+      if(!pa||!pb||pa.vine||pb.vine||pa.lira||pb.lira)continue;
+      grid[ra][ca]=pb;grid[rb][cb]=pa;
+      const hit=findRuns().some(run=>run.cells.some(x=>targets.has(x)));
+      grid[ra][ca]=pa;grid[rb][cb]=pb;
+      if(hit)return[a,b];
+    }
+    let best=null,bd=1e9;
+    for(let a=0;a<R*C;a++)for(const b of[a+1,a+C]){
+      const[ra,ca]=rc(a);if(b>=R*C||(b===a+1&&ca===C-1))continue;
+      const[rb,cb]=rc(b),pa=grid[ra][ca],pb=grid[rb][cb];
+      if(!pa||!pb||pa.vine||pb.vine||pa.lira||pb.lira)continue;
+      grid[ra][ca]=pb;grid[rb][cb]=pa;const ok=findRuns().length>0;grid[ra][ca]=pa;grid[rb][cb]=pb;
+      const dd=Math.abs(ra-r)+Math.abs(ca-c);if(ok&&dd<bd){bd=dd;best=[a,b]}
+    }
+    if(best)return best;
+  }
+  return findMove();
+}
+async function reshuffle(){
+  Sound.play('shuffle');
+  say('The runes are tangled. Let me shuffle them!');
+  for(let tries=0;tries<100;tries++){
+    grid.flat().forEach(p=>{if(p&&!p.sp&&!p.lira)p.t=randType()});
+    if(!findRuns().length&&findMove())break;
+  }
+  grid.flat().forEach(p=>p&&burst(ox+(p.x+.5)*S,oy+(p.y+.5)*S,'#fff7c2',1));
+  await wait(300);
+}
+
+/* ---------- moves ---------- */
+async function trySwap(a,b){
+  const[ra,ca]=rc(a),[rb,cb]=rc(b),pa=grid[ra][ca],pb=grid[rb][cb];
+  if(!pa||!pb)return;
+  if(lv.moves<=0)return;
+  if(pa.lira||pb.lira){say("I can't swap places! Match runes right next to me and I'll step forward.");return}
+  if(pa.vine||pb.vine){Sound.play('vineHit');say('Those vines hold tight. Match that rune to break them!');return}
+  lv.busy=true;hint=null;lv.idle=0;sel=null;lv.acted=true;
+  Sound.play('swap');Sound.haptic('light');
+  swapCells(a,b);await settle();
+  if(pa.sp==='prism'||pb.sp==='prism'){
+    lv.moves--;renderHUD();
+    const set=new Set();
+    if(pa.sp==='prism'&&pb.sp==='prism'){for(let k=0;k<R*C;k++)set.add(k);pa.sp=pb.sp=null}
+    else{
+      const pr=pa.sp==='prism'?pa:pb,other=pr===pa?pb:pa,prK=pr===pa?b:a;
+      pr.sp=null;set.add(prK);
+      for(let r=0;r<R;r++)for(let c=0;c<C;c++){const p=grid[r][c];if(p&&p.t===other.t){set.add(idx(r,c));if(other.sp&&p!==other)p.sp=other.sp==='bomb'?'bomb':(Math.random()<.5?'h':'v')}}
+      fx.push({kind:'ring',r:rc(prK)[0],c:rc(prK)[1],life:0,max:.5,big:true});
+    }
+    say('Prism power!','happy');
+    await explode(set,new Map(),2);await resolve(null);
+  }else if(pa.sp&&pb.sp){
+    lv.moves--;renderHUD();Sound.play('combo');Sound.haptic('heavy');await explode(new Set([a,b]),new Map(),2);await resolve(null);
+  }else if(!findGroups().length){
+    // a swap that makes no match still costs a move
+    Sound.play('swapBad');lv.moves--;renderHUD();
+    swapCells(a,b);await settle();lv.busy=false;
+    say(lv.moves>0?'No match there. That cost a move!':'No match there…','worried',true);
+    afterMove();return;
+  }else{
+    lv.moves--;renderHUD();await resolve([a,b]);
+  }
+  lv.busy=false;afterMove();
+}
+async function cast(k){
+  const[r,c]=rc(k),p=grid[r][c];if(!p||p.lira)return;
+  const mode=castMode;castMode=null;
+  const set=new Set();
+  if(mode==='thorn'){Sound.play('thorn');Sound.haptic('heavy');save.thorn--;persist();set.add(k);fx.push({kind:'ring',r,c,life:0,max:.4});shake=6}
+  else if(mode==='sun'){Sound.play('sunbeam');Sound.duck(1);Sound.haptic('heavy');lv.mana.sun=0;for(let i=0;i<R;i++)set.add(idx(i,c));fx.push({kind:'beam',dir:'v',r,c,life:0,max:.45});shake=5;say('Sunbeam!','happy')}
+  else if(mode==='crystal'){Sound.play('crystal');Sound.duck(1);Sound.haptic('heavy');lv.mana.crystal=0;for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){const rr=r+dr,cc=c+dc;if(rr>=0&&rr<R&&cc>=0&&cc<C)set.add(idx(rr,cc))}fx.push({kind:'ring',r,c,life:0,max:.5,big:true});shake=9;say('Crystal Burst!','happy')}
+  lv.busy=true;lv.acted=true;flash=.35;renderHUD();
+  lv.spellClear=true;await explode(set,new Map(),1);lv.spellClear=false;await resolve(null);
+  lv.busy=false;afterMove();
+}
+function pickSpell(id){
+  if(!canInput())return;
+  lv.idle=0;hint=null;sel=null;
+  if(id==='thorn'){
+    if(save.thorn<=0){buyThorn(true);return}
+    castMode=castMode==='thorn'?null:'thorn';if(castMode)say('Thorn Strike ready. Pick any rune!');
+  }else{
+    const s=SPELLS.find(s=>s.id===id),have=lv.mana[id];
+    if(have<s.need){say(`${s.name} needs ${s.need-have} more ${TYPES[s.t].name.toLowerCase()} runes.`);return}
+    if(!s.target){Sound.play('gift');Sound.play('moves',2);lv.mana[id]=0;lv.moves+=2;lv.acted=true;floatText(W/2,oy+R*S*.45,'+2 moves',30,'#9ff0c0');say("Nature's Gift! Two extra moves.",'happy')}
+    else{castMode=castMode===id?null:id;if(castMode)say(`${s.name} is ready. Tap where to cast it!`)}
+  }
+  renderHUD();
+  if(!castMode&&lv.moves<=0&&!lv.over)outOfMoves();
+}
+const goalsDone=()=>lv.goals.every(g=>g.got>=g.need);
+function afterMove(){
+  if(lv.over)return;
+  Sound.urgent(lv.moves<=5);if(lv.moves<=5&&lv.moves>0&&!goalsDone())Sound.play('lowTick');
+  if(goalsDone()){winLevel();return}
+  if(lv.moves<=0){outOfMoves();return}
+  if(lv.moves===3)say('Only three moves left. Make them count!','worried');
+}
+
+/* ---------- loop ---------- */
+const approach=(v,t,d)=>v<t?Math.min(t,v+d):Math.max(t,v-d);
+function update(dt){
+  if(!lv)return;
+  let settled=true;
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+    const p=grid[r][c];if(!p)continue;
+    if(p.lin){p.x=approach(p.x,c,9*dt);p.y=approach(p.y,r,9*dt);if(p.x===c&&p.y===r)p.lin=false}
+    else{
+      p.x=approach(p.x,c,9*dt);
+      if(p.y<r){p.vy+=48*dt;p.y=Math.min(r,p.y+p.vy*dt);if(p.y===r){p.vy=0;p.land=.14}}
+      else if(p.y>r)p.y=approach(p.y,r,9*dt);
+    }
+    if(p.land>0)p.land=Math.max(0,p.land-dt);
+    if(p.grow<1){p.grow=Math.min(1,p.grow+dt*5);settled=false}
+    if(p.x!==c||p.y!==r)settled=false;
+  }
+  for(const f of fx)f.life+=dt;
+  fx=fx.filter(f=>f.life<f.max);
+  if(fx.some(f=>f.kind==='pop'))settled=false;
+  for(const p of parts){p.life+=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=300*dt}
+  parts=parts.filter(p=>p.life<p.max);
+  for(const t of texts){t.life+=dt;t.y-=30*dt}
+  texts=texts.filter(t=>t.life<t.max);
+  shake=Math.max(0,shake-dt*30);flash=Math.max(0,flash-dt*2.2);
+  if(settled&&waiters.length){const w=waiters;waiters=[];w.forEach(f=>f())}
+  if(!lv.busy&&!lv.over&&state==='play'&&!castMode){
+    lv.idle+=dt;
+    const wait=lv.i===0&&lv.moves>lv.def.moves-3?1:5;
+    if(lv.idle>wait&&!hint)hint=pickHint();
+  }
+}
+const hash=n=>{const v=Math.sin(n*127.1)*43758.5453;return v-Math.floor(v)};
+const dot=(x,y,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill()};
+const BW=()=>C*S,BH=()=>R*S;
+// Ambient scenery per level. front:true ornaments sit on the board frame, the rest drift behind the board.
+const DECO={
+  fireflies:{draw(t){for(let i=0;i<22;i++){const x=hash(i)*W+Math.sin(t*.6+i)*14,y=hash(i+31)*H+Math.cos(t*.5+i*2)*10;ctx.fillStyle=`rgba(255,240,150,${.25+.4*Math.abs(Math.sin(t*1.4+i))})`;dot(x,y,2.2)}}},
+  pollen:{draw(t){for(let i=0;i<30;i++){const x=hash(i)*W+Math.sin(t*.7+i)*20,y=H-((t*18+hash(i+3)*H)%H);ctx.fillStyle='rgba(255,236,150,.6)';dot(x,y,1.8)}}},
+  rays:{draw(t){ctx.save();ctx.globalCompositeOperation='lighter';for(let i=0;i<4;i++){ctx.fillStyle=`rgba(255,226,140,${.05+.04*Math.sin(t*.8+i)})`;const x=W*(.05+i*.25);ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x+40,0);ctx.lineTo(x+170,H);ctx.lineTo(x+70,H);ctx.fill()}ctx.restore()}},
+  leaves:{draw(t){for(let i=0;i<12;i++){const y=((t*30+hash(i)*H*1.2)%(H+40))-20,x=hash(i+5)*W+Math.sin(t+i)*25;ctx.save();ctx.translate(x,y);ctx.rotate(t*1.5+i);ctx.fillStyle=i%3?'rgba(126,211,95,.65)':'rgba(233,169,32,.65)';ctx.beginPath();ctx.ellipse(0,0,7,3.5,0,0,7);ctx.fill();ctx.restore()}}},
+  sparkles:{draw(t){for(let i=0;i<26;i++){const x=hash(i)*W,y=hash(i+9)*H,a=Math.sin(t*2+i*1.7);if(a<.1)continue;const r=3*a;ctx.fillStyle=`rgba(255,255,255,${a*.8})`;ctx.beginPath();ctx.moveTo(x,y-r*2);ctx.lineTo(x+r*.5,y);ctx.lineTo(x,y+r*2);ctx.lineTo(x-r*.5,y);ctx.moveTo(x-r*2,y);ctx.lineTo(x,y+r*.5);ctx.lineTo(x+r*2,y);ctx.lineTo(x,y-r*.5);ctx.fill()}}},
+  ripples:{draw(t){for(let i=0;i<7;i++){const k=(t*.35+i/7)%1;ctx.strokeStyle=`rgba(143,211,255,${.4*(1-k)})`;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(hash(i)*W,hash(i+4)*H,10+k*60,4+k*22,0,0,7);ctx.stroke()}}},
+  fog:{draw(t){for(let i=0;i<7;i++){const x=((i*97+t*14)%(W+240))-120,y=H*(.08+.14*i);ctx.fillStyle='rgba(220,236,240,.09)';ctx.beginPath();ctx.ellipse(x,y,130,24,0,0,7);ctx.fill()}}},
+  embers:{draw(t){for(let i=0;i<30;i++){const y=H-((t*40+hash(i)*H)%H),x=hash(i+2)*W+Math.sin(t*2+i)*10;ctx.fillStyle=`rgba(255,${120+(i*37)%80},60,${.7*(y/H)})`;dot(x,y,2)}}},
+  stars:{draw(t){for(let i=0;i<50;i++){ctx.fillStyle=`rgba(255,255,255,${.2+.6*Math.abs(Math.sin(t*.8+i))})`;dot(hash(i)*W,hash(i+50)*H,1.2)}}},
+  moon:{draw(t){const r=Math.min(W,H)*.15,x=W-r*.9,y=r*.9;const g=ctx.createRadialGradient(x,y,r*.6,x,y,r*2.4);g.addColorStop(0,'rgba(230,238,255,.35)');g.addColorStop(1,'rgba(230,238,255,0)');ctx.fillStyle=g;dot(x,y,r*2.4);ctx.fillStyle='#eef3ff';dot(x,y,r);ctx.fillStyle='rgba(170,185,225,.5)';dot(x-r*.3,y-r*.2,r*.18);dot(x+r*.25,y+r*.3,r*.12)}},
+  lanterns:{draw(t){for(const[fx,len]of[[.12,.35],[.5,.15],[.88,.45]]){const x=W*fx,sw=Math.sin(t*1.2+fx*9)*4,y=H*len;ctx.strokeStyle='rgba(255,230,180,.4)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x+sw,y);ctx.stroke();const g=ctx.createRadialGradient(x+sw,y+9,0,x+sw,y+9,34);g.addColorStop(0,'rgba(255,196,107,.6)');g.addColorStop(1,'rgba(255,196,107,0)');ctx.fillStyle=g;dot(x+sw,y+9,34);ctx.fillStyle='#ffc46b';ctx.beginPath();ctx.roundRect(x+sw-8,y,16,19,6);ctx.fill();ctx.fillStyle='#8a4b1c';ctx.fillRect(x+sw-6,y-2,12,3)}}},
+  mushrooms:{front:true,draw(t){const by=oy+BH()+6;for(const[x,k]of[[ox,1],[ox+24,.7],[ox+BW(),1.1],[ox+BW()-28,.75]]){const r=S*.3*k;ctx.fillStyle='#f6ead2';ctx.fillRect(x-r*.3,by-r*1.2,r*.6,r*1.2);ctx.fillStyle='#e4574b';ctx.beginPath();ctx.arc(x,by-r*1.1,r,Math.PI,0);ctx.fill();ctx.fillStyle='#fff';dot(x-r*.4,by-r*1.45,r*.16);dot(x+r*.3,by-r*1.6,r*.12)}}},
+  roots:{front:true,draw(t){ctx.strokeStyle='#8a6038';ctx.lineCap='round';for(const side of[0,1]){const x=side?ox+BW()+6:ox-6,dir=side?-1:1;for(let i=0;i<3;i++){ctx.lineWidth=5-i*1.3;ctx.beginPath();ctx.moveTo(x,oy-6+i*10);ctx.bezierCurveTo(x+dir*(14+i*6),oy+BH()*.3,x-dir*10,oy+BH()*.6,x+dir*(6+i*4),oy+BH()*(.75+i*.08));ctx.stroke()}}}},
+  brambles:{front:true,draw(t){const y=oy-6;ctx.strokeStyle='#4f7a33';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(ox-10,y+4);for(let x=ox;x<=ox+BW()+10;x+=24)ctx.quadraticCurveTo(x+6,y-12,x+12,y+2);ctx.stroke();for(let i=0;i<6;i++){const x=ox+BW()*(i+.5)/6,yy=y-4;ctx.fillStyle='#ff9fc6';for(let p=0;p<5;p++){const a=p*1.256+t*.3;dot(x+Math.cos(a)*4,yy+Math.sin(a)*4,3)}ctx.fillStyle='#ffd166';dot(x,yy,2)}}},
+  icicles:{front:true,draw(t){for(const[x,up,h,col]of[[ox+12,1,26,'#c9a2ff'],[ox+32,1,16,'#8fd3ff'],[ox+BW()-14,1,30,'#c9a2ff'],[ox+BW()-36,1,18,'#e2cbff'],[ox+16,0,22,'#8fd3ff'],[ox+BW()-20,0,26,'#c9a2ff']]){const y=up?oy-6:oy+BH()+6;ctx.globalAlpha=.75+.25*Math.sin(t*2+x);ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x-8,y);ctx.lineTo(x,up?y-h:y+h);ctx.lineTo(x+8,y);ctx.fill();ctx.globalAlpha=1}}},
+  bigcrystals:{front:true,draw(t){const cl=(x,y,k)=>{for(const[dx,h,w,col]of[[0,38,10,'#c9a2ff'],[-12,24,8,'#e2cbff'],[12,28,8,'#8f6ad6']]){ctx.globalAlpha=.8+.2*Math.sin(t*2+dx);ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x+(dx-w)*k,y);ctx.lineTo(x+dx*k,y-h*k);ctx.lineTo(x+(dx+w)*k,y);ctx.fill()}ctx.globalAlpha=1};cl(ox+6,oy+BH()+8,1);cl(ox+BW()-6,oy+BH()+8,1.2);cl(ox+BW()-14,oy-6,.7);cl(ox+14,oy-6,.6)}},
+  reeds:{front:true,draw(t){const by=oy+BH()+8;for(const[x,h]of[[ox-4,60],[ox+8,44],[ox+BW()+4,56],[ox+BW()-8,40]]){const sw=Math.sin(t*1.5+x)*4;ctx.strokeStyle='#6aa886';ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(x,by);ctx.quadraticCurveTo(x,by-h*.6,x+sw,by-h);ctx.stroke();ctx.fillStyle='#8a5a3a';ctx.beginPath();ctx.ellipse(x+sw,by-h,3.5,8,0,0,7);ctx.fill()}}},
+};
+function drawDeco(time,front){
+  for(const d of LOOKS[lv.def.ch].deco){const f=DECO[d];if(f&&!!f.front===front)f.draw(time)}
+}
+function draw(time){
+  ctx.clearRect(0,0,W,H);
+  if(!lv)return;
+  const look=LOOKS[lv.def.ch];
+  drawDeco(time,false);
+  ctx.save();
+  if(shake>0)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+  ctx.save();ctx.shadowColor='rgba(40,70,60,.35)';ctx.shadowBlur=16;ctx.shadowOffsetY=5;
+  ctx.fillStyle='rgba(255,252,240,.55)';ctx.beginPath();ctx.roundRect(ox-9,oy-9,C*S+18,R*S+18,20);ctx.fill();ctx.restore();
+  ctx.lineWidth=7;ctx.strokeStyle=look.frame;ctx.beginPath();ctx.roundRect(ox-9,oy-9,C*S+18,R*S+18,20);ctx.stroke();
+  ctx.lineWidth=2;ctx.strokeStyle='rgba(255,255,255,.7)';ctx.beginPath();ctx.roundRect(ox-5,oy-5,C*S+10,R*S+10,16);ctx.stroke();
+  ctx.fillStyle=look.cell;
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+    const x=ox+c*S,y=oy+r*S;
+    ctx.globalAlpha=(r+c)%2?.35:.55;ctx.beginPath();ctx.roundRect(x+1.5,y+1.5,S-3,S-3,S*.2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++)if(moss[r][c])drawMoss(ctx,ox+c*S,oy+r*S,S);
+  if(lv.gate){
+    const[gr,gc]=lv.gate,x=ox+(gc+.5)*S,y=oy+(gr+.5)*S;
+    const bg=ctx.createLinearGradient(0,y,0,0);bg.addColorStop(0,'rgba(170,225,255,.5)');bg.addColorStop(1,'rgba(170,225,255,0)');
+    ctx.fillStyle=bg;ctx.fillRect(x-S*.32,0,S*.64,y);
+    ctx.save();
+    const pg=ctx.createRadialGradient(x,y,2,x,y,S*.55);pg.addColorStop(0,'#fffbe0');pg.addColorStop(.45,'#8fd3ff');pg.addColorStop(1,'#2c4a8a');
+    ctx.fillStyle=pg;ctx.beginPath();ctx.moveTo(x-S*.44,y+S*.46);ctx.lineTo(x-S*.44,y-S*.02);ctx.arc(x,y-S*.02,S*.44,Math.PI,0);ctx.lineTo(x+S*.44,y+S*.46);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='#d9e6ff';ctx.lineWidth=S*.09;ctx.shadowColor='#8fd3ff';ctx.shadowBlur=14+8*Math.sin(time*3);ctx.stroke();
+    ctx.restore();
+  }
+  ctx.save();ctx.beginPath();ctx.rect(ox-6,oy,C*S+12,R*S+6);ctx.clip();
+  const hintSet=hint&&!lv.busy?new Set(hint):null;
+  let liraAt=null;
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+    const p=grid[r][c];if(!p)continue;
+    const k=idx(r,c),x=ox+(p.x+.5)*S,y=oy+(p.y+.5)*S;
+    if(p.lira){liraAt=[x,y];continue}
+    let s=S*.38*p.grow;
+    if(sel===k){ctx.fillStyle='rgba(255,209,102,.35)';ctx.beginPath();ctx.arc(x,y,S*.48,0,7);ctx.fill();s*=1.08}
+    if(hintSet&&hintSet.has(k))s*=1+.08*Math.sin(time*8);
+    ctx.save();ctx.translate(x,y);if(p.land>0)ctx.scale(1+p.land,1-p.land);
+    drawRune(ctx,p.t,0,0,s,p.sp,time);ctx.restore();
+    if(p.vine)drawVine(ctx,x,y,S,time);
+  }
+  if(liraAt){
+    const[x,y]=liraAt,b=Math.sin(time*3)*S*.03;
+    ctx.save();ctx.shadowColor='#ff9fc6';ctx.shadowBlur=18;ctx.fillStyle='#ffd166';ctx.beginPath();ctx.arc(x,y+b,S*.5,0,7);ctx.fill();ctx.restore();
+    ctx.save();ctx.beginPath();ctx.arc(x,y+b,S*.45,0,7);ctx.clip();ctx.fillStyle='#2a6b4c';ctx.fillRect(x-S/2,y-S/2+b,S,S);
+    if(liraImg.complete&&liraImg.naturalWidth)ctx.drawImage(liraImg,x-S*.5,y-S*.47+b,S,S);ctx.restore();
+    ctx.strokeStyle='#ff9fc6';ctx.lineWidth=3;ctx.beginPath();ctx.arc(x,y+b,S*.5,0,7);ctx.stroke();
+  }
+  for(const f of fx){
+    const a=1-f.life/f.max,x=cx(f.c),y=cy(f.r);
+    if(f.kind==='pop'){ctx.globalAlpha=a;drawRune(ctx,f.t<0?0:f.t,x,y,S*.38*(1+f.life*3),f.t<0?'prism':null,time);ctx.globalAlpha=1}
+  }
+  ctx.restore();
+  for(const f of fx){
+    const a=1-f.life/f.max,x=cx(f.c),y=cy(f.r);
+    if(f.kind==='beam'){ctx.fillStyle=`rgba(255,247,194,${a*.8})`;const th=S*.5*a;f.dir==='h'?ctx.fillRect(ox,y-th/2,C*S,th):ctx.fillRect(x-th/2,oy,th,R*S)}
+    else if(f.kind==='ring'){ctx.strokeStyle=`rgba(255,247,194,${a})`;ctx.lineWidth=6*a;ctx.beginPath();ctx.arc(x,y,S*(f.big?4:1.6)*(f.life/f.max)+S*.3,0,7);ctx.stroke()}
+  }
+  drawDeco(time,true);
+  if(hintSet){
+    const[a,b]=hint,[ra,ca]=rc(a),[rb,cb]=rc(b),x1=cx(ca),y1=cy(ra),x2=cx(cb),y2=cy(rb),k=(time*1.2)%1;
+    const hx=x1+(x2-x1)*k,hy=y1+(y2-y1)*k;
+    ctx.save();ctx.globalAlpha=.9*(1-k*.5);ctx.fillStyle='#fff';ctx.strokeStyle='#1f2a24';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(hx+S*.12,hy+S*.18,S*.2,0,7);ctx.fill();ctx.stroke();
+    ctx.globalAlpha=.6+.4*Math.sin(time*6);ctx.strokeStyle='#ffd166';ctx.lineWidth=3;
+    for(const[xx,yy]of[[x1,y1],[x2,y2]]){ctx.beginPath();ctx.roundRect(xx-S*.47,yy-S*.47,S*.94,S*.94,S*.2);ctx.stroke()}
+    ctx.restore();
+  }
+  for(const p of parts){ctx.globalAlpha=1-p.life/p.max;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,7);ctx.fill()}
+  ctx.globalAlpha=1;
+  ctx.restore();
+  ctx.textAlign='center';ctx.lineJoin='round';
+  for(const t of texts){
+    const a=Math.min(1,(1-t.life/t.max)*2);ctx.globalAlpha=a;ctx.font=`800 ${t.size}px "Baloo 2", Nunito, sans-serif`;
+    ctx.lineWidth=5;ctx.strokeStyle='rgba(20,30,25,.85)';ctx.strokeText(t.txt,t.x,t.y);ctx.fillStyle=t.col;ctx.fillText(t.txt,t.x,t.y);
+  }
+  ctx.globalAlpha=1;
+  if(flash>0){ctx.fillStyle=`rgba(255,250,225,${flash})`;ctx.fillRect(0,0,W,H)}
+  if(castMode){ctx.font='800 15px Nunito, sans-serif';ctx.fillStyle='#ffd166';ctx.fillText('Tap a rune to cast · tap the spell again to cancel',W/2,Math.max(14,oy-10))}
+}
+let last=performance.now();
+function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;update(dt);if(!$('#game').hidden)draw(now/1000);requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+
+/* ---------- input ---------- */
+let drag=null;
+function cellAt(e){
+  const r0=cv.getBoundingClientRect(),x=e.clientX-r0.left-ox,y=e.clientY-r0.top-oy;
+  const c=Math.floor(x/S),r=Math.floor(y/S);return r>=0&&r<R&&c>=0&&c<C?idx(r,c):null;
+}
+const canInput=()=>state==='play'&&lv&&!lv.busy&&!lv.over;
+cv.addEventListener('pointerdown',e=>{
+  if(!canInput())return;const k=cellAt(e);if(k==null)return;
+  lv.idle=0;hint=null;
+  if(castMode){cast(k);return}
+  drag={k,x:e.clientX,y:e.clientY,moved:false};cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag||drag.moved||!canInput())return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.max(Math.abs(dx),Math.abs(dy))<S*.35)return;
+  const[r,c]=rc(drag.k);let r2=r,c2=c;
+  if(Math.abs(dx)>Math.abs(dy))c2+=Math.sign(dx);else r2+=Math.sign(dy);
+  drag.moved=true;
+  if(r2>=0&&r2<R&&c2>=0&&c2<C)trySwap(drag.k,idx(r2,c2));
+});
+cv.addEventListener('pointerup',()=>{
+  if(!drag)return;const d=drag;drag=null;if(d.moved||!canInput())return;
+  if(sel!=null&&sel!==d.k){const[r1,c1]=rc(sel),[r2,c2]=rc(d.k);if(Math.abs(r1-r2)+Math.abs(c1-c2)===1){const a=sel;sel=null;trySwap(a,d.k);return}}
+  sel=sel===d.k?null:d.k;
+});
+
+/* ---------- screens ---------- */
+let state='map';
+const mapEl=$('#map'),gameEl=$('#game'),shopEl=$('#shop');
+function show(el){[mapEl,gameEl,shopEl].forEach(s=>s.hidden=s!==el)}
+const starsHtml=n=>[0,1,2].map(k=>`<span class="${k<n?'':'off'}">★</span>`).join('');
+function renderTop(){
+  regenLives();
+  const left=save.lives<MAX_LIVES?Math.max(0,LIFE_MS-(Date.now()-save.livesAt)):0;
+  const mm=String(Math.floor(left/60000)).padStart(2,'0'),ss=String(Math.floor(left/1000)%60).padStart(2,'0');
+  $('#livesStat').innerHTML=`<span class="ico" aria-hidden="true">♥</span>${save.lives} <small>${save.lives<MAX_LIVES?mm+':'+ss:'Full'}</small>`;
+  $('#coinsStat').innerHTML=`<span class="ico" aria-hidden="true">●</span>${save.coins.toLocaleString('en-US')}`;
+  $('#shopCoins').innerHTML=$('#coinsStat').innerHTML;
+}
+const NODE_GAP=92;
+const LOCK_SVG='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="2.5" fill="none"/></svg>';
+// node j of world wi: x in % of width, y in px up from the bottom of that world's section
+const mapPoint=(wi,j)=>({x:50+28*Math.sin(j*1.15+wi*1.7),y:120+j*NODE_GAP});
+// smooth S-curve from the section's bottom centre, through each node
+function trailD(pts,H){let d=`M200 ${H}`,px=200,py=H;pts.forEach(p=>{const X=p.x*4,Y=H-p.y;d+=` C${px} ${py-45} ${X} ${Y+45} ${X} ${Y}`;px=X;py=Y});return{d,px,py}}
+function scenerySVG(kind,H,seed){
+  let s='';const h=n=>hash(seed+n);
+  if(kind==='woods'){
+    for(let i=0;i<16;i++){const x=i%2?h(i)*80:320+h(i)*80,y=40+h(i+40)*(H-140),t=50+h(i+7)*50;
+      s+=`<path d="M${x} ${y}l${t*.36} ${t}h${-t*.72}z" fill="rgba(60,140,80,.35)"/><path d="M${x} ${y+t*.4}l${t*.44} ${t}h${-t*.88}z" fill="rgba(90,170,100,.3)"/>`}
+    for(let i=0;i<26;i++)s+=`<circle cx="${h(i*3)*400}" cy="${h(i*5)*H}" r="2" fill="#fff0a0" opacity="${(.3+h(i*7)*.5).toFixed(2)}"/>`;
+  }else if(kind==='caves'){
+    for(let i=0;i<14;i++){const x=i%2?14+h(i)*70:316+h(i)*70,y=70+h(i+20)*(H-150),t=30+h(i+9)*40,col=i%3?'#8f6ad6':'#5aa9e6';
+      s+=`<path d="M${x-10} ${y}L${x} ${y-t}L${x+10} ${y}ZM${x+8} ${y}L${x+16} ${y-t*.6}L${x+24} ${y}Z" fill="${col}" opacity=".6"/>`}
+    for(let i=0;i<22;i++)s+=`<circle cx="${h(i*3)*400}" cy="${h(i*5)*H}" r="1.6" fill="#e2cbff" opacity=".6"/>`;
+  }else if(kind==='marsh'){
+    s+='<circle cx="330" cy="80" r="62" fill="#eef3ff" opacity=".08"/><circle cx="330" cy="80" r="32" fill="#eef3ff" opacity=".85"/>';
+    for(let i=0;i<18;i++){const x=i%2?10+h(i)*60:330+h(i)*60,y=140+h(i+30)*(H-200),t=40+h(i+3)*40;
+      s+=`<path d="M${x} ${y}q2 ${-t*.6} 4 ${-t}" stroke="#6aa886" stroke-width="3" fill="none"/><ellipse cx="${x+4}" cy="${y-t}" rx="3" ry="8" fill="#8a5a3a"/>`}
+    for(let i=0;i<7;i++)s+=`<ellipse cx="${h(i)*400}" cy="${h(i+11)*H}" rx="95" ry="14" fill="#dcecf0" opacity=".08"/>`;
+  }else for(let i=0;i<34;i++)s+=`<circle cx="${h(i*3)*400}" cy="${h(i*5)*H}" r="1.4" fill="#fff" opacity=".55"/>`;
+  return s;
+}
+function renderMap(){
+  renderTop();paintAvatars();
+  $('#lvLabel').textContent=`Lv ${liraLevel()}`;$('#xpBar').style.width=(save.xp%100)+'%';
+  const db=$('#dailyBtn'),t=today();
+  db.disabled=save.daily===t&&save.dailyAd===t;
+  db.innerHTML=save.daily!==t?'Daily chest':save.dailyAd!==t?'<span class="ad-tag">AD</span>Bonus chest':'Back tomorrow';
+  let current=LEVELS.findIndex((_,i)=>!save.stars[i]);if(current<0)current=LEVELS.length-1;
+  const bgTop=w=>w.bg.match(/#[0-9a-f]{6}/i)[0];
+  let html='';
+  SOON.forEach(w=>{html+=`<section class="mworld soon" style="height:240px;--wbg:linear-gradient(#cfe8ff,#e8dcff)"><svg viewBox="0 0 400 240" preserveAspectRatio="none" aria-hidden="true">${scenerySVG('stars',240,99)}</svg><div class="wtitle"><span>Coming soon</span><b>${w.name}</b><p>${w.blurb}</p></div></section>`});
+  for(let wi=WORLDS.length-1;wi>=0;wi--){
+    const w=WORLDS[wi],ids=LEVELS.map((l,i)=>l.w===wi?i:-1).filter(i=>i>=0),H=200+ids.length*NODE_GAP;
+    const pts=ids.map((_,j)=>mapPoint(wi,j)),full=trailD(pts,H),d=full.d+` C${full.px} ${full.py-45} 200 45 200 0`;
+    const reached=ids.filter(i=>i<=current).length;
+    let dd='';
+    if(reached){const part=trailD(pts.slice(0,reached),H);dd=part.d+(ids[ids.length-1]<current?` C${part.px} ${part.py-45} 200 45 200 0`:'')}
+    const above=wi===WORLDS.length-1?'#e8dcff':bgTop(WORLDS[wi+1]);
+    const wimg=LOOKS[LEVELS[ids[0]].ch].img;
+    html+=`<section class="mworld" style="height:${H}px;--wbg:url(${wimg}) center/cover,${w.bg};--above:${above}">
+      <svg viewBox="0 0 400 ${H}" preserveAspectRatio="none" aria-hidden="true">${scenerySVG(w.deco,H,wi*50)}
+        <path d="${d}" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="16" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        <path d="${d}" fill="none" stroke="rgba(255,248,220,.6)" stroke-width="6" stroke-dasharray="1 13" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        ${dd?`<path d="${dd}" fill="none" stroke="#ffd166" stroke-width="7" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`:''}
+      </svg><div class="blend"></div>
+      <div class="wtitle"><span>World ${wi+1}</span><b>${w.name}</b></div>`;
+    ids.forEach((i,j)=>{
+      const p=pts[j];
+      if(i===0||LEVELS[i-1].ch!==LEVELS[i].ch){const lk=LOOKS[LEVELS[i].ch],sx=p.x>50?Math.max(20,p.x-36):Math.min(80,p.x+36);
+        html+=`<div class="sign" style="left:${sx}%;bottom:${p.y}px"><div><span>${lk.tag}</span><b>${lk.name}</b></div><i></i></div>`}
+      const open=save.unlockAll||i===0||save.stars[i-1]>0,done=save.stars[i]>0,cur=i===current,gate=j===ids.length-1;
+      html+=`<div class="mnode" style="left:${p.x}%;bottom:${p.y}px">${done?`<div class="arc">${starsHtml(save.stars[i])}</div>`:''}<button class="node${done?' done':''}${cur?' current':''}${gate?' gate':''}" data-i="${i}" ${open||cur?'':'disabled'} aria-label="Level ${i+1}${open||cur?'':', locked'}">${open||cur?i+1:LOCK_SVG}</button>${cur?'<span class="play-tab">PLAY</span>':''}</div>`;
+      if(cur)html+=`<div class="lira-pin" id="liraPin" style="left:${p.x}%;bottom:${p.y+36}px">${liraBodySVG(save.outfit,'happy')}</div>`;
+    });
+    html+='</section>';
+  }
+  $('#worlds').innerHTML=html;
+}
+$('#dailyBtn').onclick=()=>{
+  const t=today(),give=()=>{const n=50+Math.floor(Math.random()*4)*25;save.coins+=n;persist();Sound.play('daily');renderMap();toast(`The chest held ${n} coins!`)};
+  if(save.daily!==t){save.daily=t;give()}
+  else if(save.dailyAd!==t)showAd(()=>{save.dailyAd=t;closeModal();give()});
+};
+$('#worlds').addEventListener('click',e=>{const b=e.target.closest('.node');if(b&&!b.disabled)levelIntro(+b.dataset.i)});
+setInterval(()=>{if(!mapEl.hidden||!shopEl.hidden)renderTop()},1000);
+
+const modalEl=$('#modal'),card=$('#card');let acts={},adTimer=null;
+function modal(html,a){if(modalEl.hidden)Sound.play('open');card.innerHTML=html;modalEl.hidden=false;acts=a||{};const f=card.querySelector('button:not(:disabled)');if(f)f.focus({preventScroll:true})}
+function closeModal(){if(!modalEl.hidden)Sound.play('close');modalEl.hidden=true;acts={}}
+modalEl.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b&&!b.disabled&&acts[b.dataset.act])acts[b.dataset.act]()});
+let toastT;function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,2000)}
+let sayLock=0,sayT;
+// Lira's bubble pops up for a few seconds, then fades; "minor" lines never interrupt an important one
+function say(m,mood,minor){
+  const now=performance.now();if(minor&&now<sayLock)return;if(!minor)sayLock=now+2200;
+  const el=$('#speech');el.textContent=m;el.classList.add('on');$('#gameAvatar').innerHTML=liraSVG(save.outfit,mood);
+  clearTimeout(sayT);sayT=setTimeout(()=>{el.classList.remove('on');$('#gameAvatar').innerHTML=liraSVG(save.outfit)},m.length>60?5000:3200);
+}
+function goalChips(goals){
+  const wrap=document.createElement('div');
+  goals.forEach((g,i)=>{const left=g.lira?(g.got?0:g.dist):Math.max(0,g.need-g.got);const el=document.createElement('div');el.className='goal'+(left===0?' ok':'');el.dataset.g=i;el.appendChild(goalIcon(g));const s=document.createElement('span');s.textContent=left===0?'✓':left;el.appendChild(s);wrap.appendChild(el)});
+  return wrap;
+}
+
+function levelIntro(i){
+  regenLives();
+  if(save.lives<=0){noLives(i);return}
+  const d=LEVELS[i],goals=d.goals.map(g=>({...g,got:0,need:g.n||countGoal(d,g),dist:layoutDist(d)}));
+  modal(`<p class="eyebrow">World ${d.w+1} · Level ${i+1}</p><h2>${LOOKS[d.ch].name}</h2>${helpBody(d.feat)}
+    <p class="label">Goals · ${d.moves} moves</p><div class="goal-rows" id="goalRows"></div>
+    <button class="btn green" data-act="play">Play</button>${i>FEATURE_AT.spells?'<button class="btn plain" data-act="adstart"><span class="ad-tag">AD</span>Start with Sunbeam charged</button>':''}<button class="btn ghost" data-act="close">Not now</button>`,
+    {play:()=>startLevel(i),adstart:()=>showAd(()=>startLevel(i,{precharge:'sun'})),close:closeModal});
+  fillHelp(goals,false);
+  if(d.feat)setTimeout(()=>Sound.play('card'),150);
+}
+function helpBody(feat){
+  const f=feat&&FEATURES[feat];
+  if(!f)return '<p class="muted">No new tricks here. A challenge level using everything you know.</p>';
+  return `<div class="feat"><span class="new">New</span>${(f.arts||[f.art]).map(a=>`<canvas width="600" height="220" data-art="${a}" aria-hidden="true"></canvas>`).join('')}<h3>${f.title}</h3><ol>${f.lines.map(l=>`<li>${l}</li>`).join('')}</ol></div>`;
+}
+function goalText(g,live){
+  let t;
+  if(g.c!==undefined)t=`Burn ${g.need} ${TYPES[g.c].name} runes`;
+  else if(g.moss)t=`Clear all ${g.need} moss tiles`;
+  else if(g.vine)t=`Snap all ${g.need} vines`;
+  else t=`Bring Lira to the moon gate (${g.dist} steps away)`;
+  if(live&&!g.lira)t+=g.got>=g.need?' ✓':` · ${g.need-g.got} left`;
+  if(live&&g.lira&&g.got)t='Lira reached the gate ✓';
+  return t;
+}
+function fillHelp(goals,live){
+  const rows=$('#goalRows');
+  goals.forEach(g=>{const d=document.createElement('div');d.append(goalIcon(g));const s=document.createElement('span');s.textContent=goalText(g,live);d.append(s);rows.append(d)});
+  animateArt();
+}
+// Animated illustrations for the "New" cards. Each one loops a ~3.6s mini scene showing the mechanic.
+const ease=x=>x<=0?0:x>=1?1:x*x*(3-2*x);
+const seg=(p,a,b)=>ease((p-a)/(b-a));
+let artRunning=false;
+function animateArt(){
+  if(artRunning)return;artRunning=true;
+  const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const tick=()=>{
+    const cvs=modalEl.hidden?[]:card.querySelectorAll('canvas[data-art]');
+    if(!cvs.length){artRunning=false;return}
+    const t=still?2.6:performance.now()/1000;
+    cvs.forEach(c=>drawArt(c,c.dataset.art,t));
+    if(still){artRunning=false;return}
+    requestAnimationFrame(tick);
+  };
+  tick();
+}
+function drawArt(cv,kind,time){
+  const g=cv.getContext('2d');g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,300,110);
+  const p=(time%3.6)/3.6;
+  const rune=(t,x,y,sp,s,a)=>{g.globalAlpha=a==null?1:a;drawRune(g,t,x,y,s||13,sp||null,time);g.globalAlpha=1};
+  const pop=(t,x,y,k,sp)=>{if(k<1)rune(t,x,y,sp,13*(1+k*.7),1-k)};
+  const cell=(x,y)=>{g.fillStyle='rgba(255,255,255,.09)';g.beginPath();g.roundRect(x-17,y-17,34,34,8);g.fill()};
+  const label=(t,x,y,a)=>{g.globalAlpha=a==null?1:a;g.fillStyle='#fdf6e3';g.font='800 12px Nunito, sans-serif';g.textAlign='center';g.fillText(t,x,y);g.globalAlpha=1};
+  const hand=(x,y,a)=>{if(a<=0)return;g.globalAlpha=a;g.fillStyle='#fff';g.strokeStyle='#1f2a24';g.lineWidth=2;g.beginPath();g.arc(x,y,7,0,7);g.fill();g.stroke();g.globalAlpha=1};
+  const sparks=(x,y,k,col)=>{if(k<=0||k>=1)return;g.fillStyle=col||'#fff7c2';g.globalAlpha=1-k;for(let i=0;i<8;i++){const a=i*.785;g.beginPath();g.arc(x+Math.cos(a)*k*24,y+Math.sin(a)*k*24,2.5,0,7);g.fill()}g.globalAlpha=1};
+  const fin=seg(p,.88,1); // fade the opening frame back in to loop smoothly
+  const swapIn=(t,x,y0,y1,a,b)=>{const k=seg(p,a,b);rune(t,x,y0+(y1-y0)*k);hand(x+10,y0+(y1-y0)*k+10,p>a-.05&&p<b+.03?1:0)};
+
+  if(kind==='match'){
+    [90,130,170].forEach(x=>cell(x,40));cell(170,76);
+    if(p<.42||p>.88){const k=p>.88?0:seg(p,.12,.36);const a=p>.88?fin:1;
+      rune(0,90,40,null,13,a);rune(0,130,40,null,13,a);rune(1,170,40+36*k,null,13,a);rune(0,170,76-36*k,null,13,a);hand(182,84-36*k,p<.42&&p>.08?1:0)}
+    else{const b=seg(p,.46,.66);rune(1,170,76,null,13,1-seg(p,.8,.88));[90,130,170].forEach(x=>{pop(0,x,40,b);sparks(x,40,b,'#a6f0a0')});label('3 in a row = burn!',130,104,seg(p,.6,.66)*(1-seg(p,.8,.88)))}
+  }else if(kind==='spells'){
+    const orbs=[[1,'Sunbeam',70],[4,'Crystal Burst',150],[0,'+2 moves',230]];
+    if(p<.6)for(let k=0;k<6;k++){const q=(p*6+k/6)%1,o=orbs[k%3];rune(o[0],12+(o[2]-12)*q,46-Math.sin(q*Math.PI)*26,null,6,1-q*.4)}
+    orbs.forEach(([t,n,x],i)=>{
+      const f=p>.88?0:seg(p,.05+i*.07,.5+i*.07);
+      g.strokeStyle='rgba(255,255,255,.18)';g.lineWidth=5;g.beginPath();g.arc(x,46,22,0,7);g.stroke();
+      if(f>0){g.strokeStyle='#ffd166';g.beginPath();g.arc(x,46,22,-Math.PI/2,-Math.PI/2+f*Math.PI*2);g.stroke()}
+      if(f>=1){g.fillStyle=`rgba(255,209,102,${.15+.15*Math.sin(time*6)})`;g.beginPath();g.arc(x,46,26,0,7);g.fill()}
+      rune(t,x,46,null,11);label(n,x,90);
+    });
+    hand(80,58,seg(p,.66,.7)*(1-seg(p,.84,.88)));label('Full? Tap it!',70,106,seg(p,.66,.7)*(1-seg(p,.84,.88)));
+  }else if(kind==='moss'||kind==='vines'){
+    const xs=[90,130,170],b=seg(p,.4,.58),gone=p>.88?0:seg(p,.45,.7),a=p>.88?fin:1;
+    xs.forEach(x=>cell(x,48));
+    if(kind==='moss'){g.globalAlpha=(1-gone)*(p>.88?fin:1);drawMoss(g,113,31,34);g.globalAlpha=1}
+    const t=kind==='moss'?2:3;
+    if(p<.4||p>.88){rune(t,90,48,null,13,a);rune(t,130,48,null,13,a);if(kind==='vines')drawVine(g,130,48,34,0);swapIn(t,170,p>.88?84:84,48,.1,.32)}
+    else{xs.forEach(x=>{pop(t,x,48,b);sparks(x,48,b,kind==='moss'?'#7ed35f':'#a6f0a0')});if(kind==='vines'){g.globalAlpha=1-gone;drawVine(g,130,48,34,0);g.globalAlpha=1}}
+    label(kind==='moss'?'Burn the rune on the moss':'Match the wrapped rune',130,100,seg(p,.5,.56)*(1-seg(p,.82,.88)));
+  }else if(kind==='arrow'){
+    const xs=[40,75,110,145],more=[[195,3],[230,1],[265,0]],b=seg(p,.38,.52),beam=seg(p,.58,.72);
+    [...xs,195,230,265].forEach(x=>cell(x,46));
+    if(p<.38||p>.88){const a=p>.88?fin:1;xs.slice(0,3).forEach(x=>rune(2,x,46,null,13,a));swapIn(2,145,82,46,.1,.32)}
+    else{xs.slice(1).forEach(x=>pop(2,x,46,b));if(p<.62)rune(2,40,46,'h',13*(1+.15*Math.sin(time*12)));else pop(2,40,46,beam,'h')}
+    more.forEach(([x,t])=>{if(p<.6||p>.88)rune(t,x,46,null,13,p>.88?fin:1);else pop(t,x,46,beam)});
+    if(beam>0&&beam<1){g.fillStyle=`rgba(255,247,194,${1-beam})`;g.fillRect(20,40-6*(1-beam),270,12*(1-beam)+12)}
+    label(p<.58?'Match 4 → Light Arrow':'It clears the whole row!',150,96,seg(p,.42,.48)*(1-seg(p,.82,.88)));
+  }else if(kind==='burst'){
+    const L=[[50,20],[50,50],[50,80],[82,80]],b=seg(p,.36,.5),boom=seg(p,.6,.76),around=[[82,50],[114,80],[114,50]];
+    [...L,[114,80],[82,50],[114,50]].forEach(([x,y])=>cell(x,y));
+    if(p<.36||p>.88){const a=p>.88?fin:1;L.forEach(([x,y])=>rune(3,x,y,null,12,a));swapIn(3,114,110,80,.1,.32)}
+    else{L.slice(0,3).forEach(([x,y])=>pop(3,x,y,b));pop(3,114,80,b);if(p<.62)rune(3,82,80,'bomb',12);else pop(3,82,80,boom,'bomb')}
+    around.forEach(([x,y],i)=>{if(p<.6||p>.88)rune([1,2,4][i],x,y,null,12,p>.88?fin:1);else pop([1,2,4][i],x,y,boom)});
+    if(boom>0&&boom<1){g.strokeStyle=`rgba(255,247,194,${1-boom})`;g.lineWidth=5;g.beginPath();g.arc(82,80,10+boom*45,0,7);g.stroke()}
+    label(p<.6?'L or T shape → Burst':'Boom! Everything around it',215,56,seg(p,.4,.46)*(1-seg(p,.82,.88)));
+  }else if(kind==='prism'){
+    const row=[22,50,78,106,134],b=seg(p,.3,.44),sw=seg(p,.5,.62),fire=seg(p,.66,.8);
+    const grid3=[[190,22,0],[222,22,2],[254,22,0],[190,54,1],[222,54,0],[254,54,3],[190,86,0],[222,86,4],[254,86,0]];
+    row.forEach(x=>cell(x,30));cell(134,62);grid3.forEach(([x,y])=>cell(x,y));
+    if(p<.3||p>.88){const a=p>.88?fin:1;row.slice(0,4).forEach(x=>rune(4,x,30,null,11,a));swapIn(4,134,62,30,.08,.26)}
+    else{row.slice(0,4).forEach(x=>pop(4,x,30,b));
+      const px=134+(190-134)*sw,py=30-8*sw;
+      if(p<.66)rune(0,px,py,'prism',12);else pop(0,190,22,fire,'prism');
+      hand(146,40,p>.46&&p<.6?1:0);
+      if(fire>0&&fire<1)grid3.forEach(([x,y,t])=>{if(t===0){g.strokeStyle=`rgba(255,247,194,${1-fire})`;g.lineWidth=2;g.beginPath();g.moveTo(190,22);g.lineTo(x,y);g.stroke()}})}
+    grid3.forEach(([x,y,t])=>{if(p>.3&&p<.88&&x===190&&y===22){if(sw<1)rune(0,190-(190-134)*sw,22+8*sw,null,11);return}if(t===0&&p>=.66&&p<=.88)pop(0,x,y,fire);else rune(t,x,y,null,11,p>.88?fin:1)});
+    label(p<.5?'Match 5 → Prism':'Swap it: every leaf burns!',150,104,seg(p,.34,.4)*(1-seg(p,.82,.88)));
+  }else if(kind==='lira'){
+    const X=[118,150,182],Y=[22,52,82];
+    g.save();g.translate(-62,0);
+    Y.forEach(y=>X.forEach(x=>cell(x,y)));
+    g.strokeStyle='#8fd3ff';g.lineWidth=3;g.beginPath();g.moveTo(135,36);g.lineTo(135,20);g.arc(150,20,15,Math.PI,0);g.lineTo(165,36);g.stroke();
+    const b1=seg(p,.12,.26),h1=seg(p,.3,.42),b2=seg(p,.5,.62),h2=seg(p,.66,.78);
+    const ly=p>.88?82:82-30*h1-30*h2,hop=Math.sin(h1*Math.PI)*8+Math.sin(h2*Math.PI)*8;
+    const rowRune=(y,k,types)=>X.forEach((x,i)=>{if(p>.88)rune(types[i],x,y,null,11,fin);else if(k<=0)rune(types[i],x,y,null,11);else{pop(types[i],x,y,k);sparks(x,y,k,'#8fd3ff')}});
+    rowRune(52,b1,[2,2,2]);rowRune(22,b2,[1,1,1]);
+    [[118,82,3],[182,82,4]].forEach(([x,y,t])=>rune(t,x,y,null,11));
+    g.fillStyle='#ffd166';g.beginPath();g.arc(150,ly-hop,15,0,7);g.fill();
+    if(liraImg.complete&&liraImg.naturalWidth){g.save();g.beginPath();g.arc(150,ly-hop,13,0,7);g.clip();g.fillStyle='#2a6b4c';g.fillRect(136,ly-hop-14,28,28);g.drawImage(liraImg,137,ly-hop-13,26,26);g.restore()}
+    g.restore();
+    label(p<.5?'Burn runes next to Lira':p<.8?'She steps forward!':'She made it!',218,58);
+  }
+}
+$('#helpBtn').onclick=()=>{
+  if(!canInput())return;
+  state='paused';
+  modal(`<p class="eyebrow">Level ${lv.i+1} · ${LOOKS[lv.def.ch].name}</p><h2>How to play</h2>${helpBody(lv.def.feat||'match')}<p class="label">Goals · ${lv.moves} moves left</p><div class="goal-rows" id="goalRows"></div><button class="btn green" data-act="ok">Got it</button>`,
+    {ok:()=>{closeModal();state='play'}});
+  fillHelp(lv.goals,true);
+};
+function layoutDist(d){
+  if(!d.layout)return 0;let L=null,G=null;
+  d.layout.forEach((row,r)=>{if(row.includes('L'))L=[r,row.indexOf('L')];if(row.includes('G'))G=[r,row.indexOf('G')]});
+  return L&&G?Math.abs(L[0]-G[0])+Math.abs(L[1]-G[1]):0;
+}
+function countGoal(d,g){
+  if(g.lira)return 1;
+  if(!d.layout)return 0;let n=0;
+  d.layout.forEach(row=>[...row].forEach(ch=>{if(g.moss&&(ch==='m'||ch==='b'))n++;if(g.vine&&(ch==='v'||ch==='b'))n++}));
+  return n;
+}
+function startLevel(i,opts){
+  closeModal();
+  const def=LEVELS[i];
+  lv={i,def,moves:def.moves,score:0,goals:def.goals.map(g=>({...g,got:0,need:g.n||countGoal(def,g)})),busy:true,over:false,adUsed:false,idle:0,
+    mana:{sun:0,crystal:0,leaf:0},gate:null};
+  if(def.layout)def.layout.forEach((row,r)=>{if(row.includes('G'))lv.gate=[r,row.indexOf('G')]});
+  if(opts&&opts.precharge)lv.mana[opts.precharge]=SPELLS.find(s=>s.id===opts.precharge).need;
+  if(def.feat==='spells')lv.mana.sun=SPELLS[0].need;
+  $('#spellBar').dataset.lv='';
+  fx=[];parts=[];texts=[];sel=null;hint=null;castMode=null;waiters=[];refreshLiraImg();
+  gameEl.style.setProperty('--gbg',`linear-gradient(rgba(255,255,255,.08),rgba(255,255,255,0)),url(${LOOKS[def.ch].img}) center/cover,${LOOKS[def.ch].bg}`);
+  Sound.music(def.ch===6?'moon':['woods','caves','marsh'][def.w]||'woods');Sound.urgent(false);
+  show(gameEl);state='play';buildBoard(def);renderHUD();say(def.tip);resize();
+  settle().then(()=>{if(lv&&lv.i===i)lv.busy=false});
+}
+function renderHUD(){
+  if(!lv)return;
+  $('#movesN').textContent=lv.moves;$('#movesBox').classList.toggle('low',lv.moves<=5);
+  lv.goals.forEach(g=>{if(g.lira)g.dist=liraDist()});
+  const row=$('#goalRow');row.innerHTML='';row.append(...goalChips(lv.goals).children);
+  renderSpells();
+}
+function renderSpells(){
+  const bar=$('#spellBar');
+  bar.hidden=lv.i<FEATURE_AT.spells;if(bar.hidden)return;
+  if(bar.dataset.lv!==String(lv.i)){
+    bar.dataset.lv=lv.i;
+    bar.innerHTML=SPELLS.map(s=>`<button class="spell" data-sp="${s.id}"><span class="orb" style="--col:${TYPES[s.t].c2}"><i><canvas width="56" height="56" data-rune="${s.t}"></canvas></i></span>${s.name}<span class="cnt"></span></button>`).join('')
+      +'<button class="spell" data-sp="thorn"><span class="orb" style="--p:0;--col:#7ed35f"><i><span style="font-size:22px;color:#7ed35f" aria-hidden="true">✦</span></i><span class="n"></span></span>Thorn Strike<span class="cnt">booster</span></button>';
+    bar.querySelectorAll('canvas[data-rune]').forEach(c=>{const g=c.getContext('2d');g.scale(2,2);drawRune(g,+c.dataset.rune,14,14,10.5,null,0)});
+  }
+  SPELLS.forEach(s=>{
+    const b=bar.querySelector(`[data-sp="${s.id}"]`),have=lv.mana[s.id],p=Math.round(have/s.need*100);
+    b.classList.toggle('ready',p>=100);b.classList.toggle('active',castMode===s.id);
+    b.querySelector('.orb').style.setProperty('--p',p);b.querySelector('.cnt').textContent=p>=100?'Ready!':`${have}/${s.need}`;
+    b.setAttribute('aria-label',`${s.name}, ${have} of ${s.need} ${TYPES[s.t].name} runes`);
+  });
+  const th=bar.querySelector('[data-sp="thorn"]');th.classList.toggle('active',castMode==='thorn');th.querySelector('.n').textContent=save.thorn;th.setAttribute('aria-label',`Thorn Strike, ${save.thorn} left`);
+  if(lv.justCharged){const b=bar.querySelector(`[data-sp="${lv.justCharged}"]`);b.classList.remove('burst');void b.offsetWidth;b.classList.add('burst');lv.justCharged=null}
+}
+$('#spellBar').addEventListener('click',e=>{const b=e.target.closest('[data-sp]');if(b)pickSpell(b.dataset.sp)});
+function buyThorn(inLevel){
+  const can=save.coins>=600;
+  modal(`<p class="eyebrow">Booster</p><h2>Thorn Strike ×3</h2><p class="muted">Smash any single rune, including ones wrapped in vines. Doesn't use a move.</p>
+  <button class="btn" data-act="buy" ${can?'':'disabled'}>${can?'Buy for 600 coins':'Not enough coins'}</button>${can?'':'<button class="btn plain" data-act="shop">Get coins</button>'}<button class="btn ghost" data-act="close">Close</button>`,
+  {buy:()=>{save.coins-=600;save.thorn+=3;persist();closeModal();renderHUD();renderTop();toast('+3 Thorn Strikes')},shop:()=>{closeModal();if(inLevel)toast('Finish the level, then visit the shop');else openShop()},close:closeModal});
+}
+$('#exitBtn').onclick=()=>{
+  if(!lv||lv.over)return;
+  if(!lv.acted){goMap();return}
+  modal(`<h2>Leave the level?</h2><p class="muted">You'll lose a life.</p><button class="btn" data-act="stay">Keep playing</button><button class="btn ghost" data-act="leave">Leave and lose a life</button>`,
+    {stay:closeModal,leave:()=>{loseLife();goMap()}});
+};
+function showAd(cb){
+  let n=3;
+  modal(`<p class="eyebrow">Sample ad</p><div class="ad-box" id="adN">3</div><p class="muted">A short rewarded video plays here (e.g. AdMob). The player chose to watch it for a reward.</p><div class="ad-bar"><i id="adBar"></i></div>`,{});
+  const bar=$('#adBar');bar.offsetWidth;bar.style.width='100%';
+  Sound.set({sfx:false,music:false});
+  clearInterval(adTimer);adTimer=setInterval(()=>{n--;const el=$('#adN');if(el)el.textContent=Math.max(0,n);if(n<=0){clearInterval(adTimer);Sound.set({sfx:save.sfx,music:save.music});Sound.play('coins',4);cb()}},1000);
+}
+const wallet=()=>`<div class="wallet"><span><i class="coin"></i>${save.coins.toLocaleString('en-US')} coins</span><button data-act="getcoins">+ Get coins</button></div>`;
+// quick coin store shown on top of a level modal; back() reopens that modal with the new balance
+function coinStore(back){
+  const packs=['c1000','c5500'].map(k=>`<button class="btn" data-act="${k}">${IAP[k].name} · ${IAP[k].price} (demo)</button>`).join('');
+  modal(`<p class="eyebrow">Get coins</p><h2>Coin pouch</h2>${wallet().replace(/<button.*?<\/button>/,'')}<p class="muted">Demo purchase. No money is charged.</p>${packs}
+  <button class="btn plain" data-act="ad"><span class="ad-tag">AD</span>+100 coins</button><button class="btn ghost" data-act="back">Back</button>`,{
+    c1000:()=>{IAP.c1000.grant();persist();Sound.play('purchase');toast('+2,500 coins');back()},
+    c5500:()=>{IAP.c5500.grant();persist();Sound.play('purchase');toast('+14,000 coins');back()},
+    ad:()=>showAd(()=>{save.coins+=100;persist();toast('+100 coins');back()}),
+    back:()=>back(),
+  });
+}
+function outOfMoves(){
+  state='paused';Sound.urgent(false);
+  const can=save.coins>=300;
+  const close=lv.goals.every(g=>g.lira?(g.got||g.dist<=2):g.need-g.got<=Math.max(2,Math.ceil(g.need*.2)));
+  const ready=lv.i>=FEATURE_AT.spells&&SPELLS.some(s=>lv.mana[s.id]>=s.need);
+  modal(`<p class="eyebrow">Level ${lv.i+1}</p><h2>Out of moves!</h2>${wallet()}<p class="muted">${close?'So close! Still needed:':'Still needed:'}</p><div class="goal-list" id="leftGoals"></div>
+  <button class="btn" data-act="buy" ${can?'':'disabled'}>${can?'+5 moves · 300 coins':'+5 moves · not enough coins'}</button>
+  ${ready?'<button class="btn green" data-act="spell">Cast my charged spell first</button>':''}
+  ${lv.adUsed?'':'<button class="btn plain" data-act="ad"><span class="ad-tag">AD</span>+3 moves</button>'}
+  <button class="btn ghost" data-act="quit">Give up</button>`,{
+    buy:()=>{save.coins-=300;persist();lv.moves+=5;resume()},
+    spell:()=>{closeModal();state='play';say('Pick a spell below and cast it!')},
+    ad:()=>showAd(()=>{lv.adUsed=true;lv.moves+=3;resume()}),
+    quit:()=>{loseLife();failLevel()},
+    getcoins:()=>coinStore(outOfMoves),
+  });
+  $('#leftGoals').append(...goalChips(lv.goals.filter(g=>g.got<g.need)).children);
+}
+function resume(){closeModal();state='play';Sound.play('moves',5);renderHUD();say("Let's finish this!",'happy')}
+function failLevel(){
+  if(!lv.over){Sound.play('fail');Sound.haptic('warning')}
+  lv.over=true;state='paused';
+  const none=save.lives<=0,canRefill=save.coins>=900;
+  modal(`<div class="body" aria-hidden="true">${liraBodySVG(save.outfit,'sad')}</div><h2>Level failed</h2>${wallet()}<div class="goal-list shake" id="failGoals"></div><p class="muted">The runes will wait for us. Lives left: ${save.lives}.</p>
+  ${none?`<button class="btn" data-act="refill" ${canRefill?'':'disabled'}>${canRefill?'Refill lives · 900 coins':'Refill lives · need 900 coins'}</button>`:''}
+  <button class="btn green" data-act="retry" ${save.lives>0?'':'disabled'}>Try again</button><button class="btn ghost" data-act="map">Back to map</button>`,
+  {retry:()=>{const i=lv.i;levelIntro(i)},map:()=>goMap(),
+   refill:()=>{save.coins-=900;save.lives=MAX_LIVES;persist();Sound.play('lifeRefill');toast('Lives refilled');failLevel()},
+   getcoins:()=>coinStore(failLevel)});
+  $('#failGoals').append(...goalChips(lv.goals.filter(g=>g.lira?!g.got:g.got<g.need)).children);
+}
+async function winLevel(){
+  lv.over=true;lv.busy=true;const left=lv.moves;
+  say('We did it! The forest is glowing again!','happy');
+  if(left>0){
+    floatText(W/2,oy+R*S*.45,'Forest Bloom!',36,'#9ff0c0');await wait(500);
+    const cand=[];for(let r=0;r<R;r++)for(let c=0;c<C;c++){const p=grid[r][c];if(p&&!p.sp&&p.t>=0)cand.push(idx(r,c))}
+    cand.sort(()=>Math.random()-.5);
+    const set=new Set(cand.slice(0,Math.min(left,8)));
+    set.forEach(k=>{const[r,c]=rc(k);grid[r][c].sp=Math.random()<.5?'h':'v'});
+    lv.score+=left*250;renderHUD();await wait(400);
+    await explode(set,new Map(),1);await resolve(null);
+  }
+  const stars=1+(left>=Math.ceil(lv.def.moves*.15)?1:0)+(left>=Math.ceil(lv.def.moves*.3)?1:0);
+  const coins=30+left*10,xp=stars*20,before=liraLevel(),firstClear=!save.stars[lv.i];
+  save.stars[lv.i]=Math.max(save.stars[lv.i]||0,stars);save.coins+=coins;save.xp+=xp;
+  const levelUp=liraLevel()>before;if(levelUp)save.thorn+=1;
+  persist();state='paused';Sound.urgent(false);Sound.play('win');Sound.haptic('success');
+  [0,1,2].forEach(k=>{if(k<stars)setTimeout(()=>Sound.play('star',k),1300+k*200)});setTimeout(()=>Sound.play('coins',8),2000);
+  const next=lv.i+1<LEVELS.length,i=lv.i,newWorld=firstClear&&next&&LEVELS[i+1].w!==lv.def.w;
+  const show=doubled=>{modal(`<div class="body dance" aria-hidden="true">${liraBodySVG(save.outfit,'cheer')}</div><p class="eyebrow">${LOOKS[lv.def.ch].name} · Level ${i+1}</p><h2>Level complete!</h2>
+  <div class="big-stars">${[0,1,2].map(k=>`<span class="${k<stars?'':'off'}" style="animation-delay:${.2+k*.2}s">★</span>`).join('')}</div>
+  <p class="muted">${left} moves to spare</p>
+  <div class="rewards"><span>+<b id="coinCount">0</b> coins${doubled?' (doubled)':''}</span><span>+${xp} XP</span></div>
+  ${doubled?'':`<button class="btn plain" data-act="dbl"><span class="ad-tag">AD</span>Double to +${coins*2} coins</button>`}
+  ${levelUp?`<p class="muted"><b>Lira reached Lv ${liraLevel()}!</b> +1 Thorn Strike</p>`:''}
+  ${newWorld?`<p class="muted">A new gate opens: <b>${WORLDS[LEVELS[i+1].w].name}</b></p>`:''}
+  ${next?'':'<p class="muted">You finished every level in this prototype.</p>'}
+  <button class="btn green" data-act="next">Continue</button>`,
+  {next:()=>goMap({hop:firstClear?i:null,then:next?i+1:null,newWorld}),dbl:()=>showAd(()=>{save.coins+=coins;persist();show(true)})});
+  countUp($('#coinCount'),doubled?coins*2:coins)};
+  show(false);confetti();
+}
+function noLives(i){
+  const can=save.coins>=900;
+  modal(`<h2>Out of lives</h2><p class="muted">A life refills every 20 minutes.</p>
+  <button class="btn" data-act="buy" ${can?'':'disabled'}>${can?'Refill all lives · 900 coins':'Refill · not enough coins'}</button>
+  <button class="btn plain" data-act="ad"><span class="ad-tag">AD</span>+1 life</button><button class="btn ghost" data-act="close">Wait</button>`,{
+    buy:()=>{save.coins-=900;save.lives=MAX_LIVES;persist();renderTop();levelIntro(i)},
+    ad:()=>showAd(()=>{save.lives++;persist();renderTop();levelIntro(i)}),
+    close:closeModal,
+  });
+}
+function goMap(opts){
+  clearInterval(adTimer);closeModal();lv=null;state='map';Sound.urgent(false);Sound.music('map');show(mapEl);renderMap();
+  const o=opts&&opts.then!==undefined?opts:{},pin=$('#liraPin');
+  if(pin)pin.scrollIntoView({block:'center'});
+  const after=()=>{if(o.then==null)return;if(o.newWorld)showUnlock(LEVELS[o.then].w,()=>levelIntro(o.then));else setTimeout(()=>levelIntro(o.then),300)};
+  const from=o.hop!=null&&$(`.node[data-i="${o.hop}"]`);
+  if(pin&&from&&!calm){
+    const fr=from.getBoundingClientRect(),pr=pin.getBoundingClientRect(),dx=fr.left+fr.width/2-(pr.left+pr.width/2),dy=fr.top-pr.bottom;
+    Sound.play('hop');setTimeout(()=>Sound.play('unlockNode'),950);
+    const a=pin.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:`translate(${dx/2}px,${dy/2-60}px)`},{transform:'translate(0,0)'}],{duration:900,easing:'ease-in-out'});
+    a.onfinish=after;
+  }else after();
+}
+function showUnlock(wi,cb){
+  const w=WORLDS[wi],el=$('#unlock');
+  el.style.setProperty('--ubg',`linear-gradient(rgba(20,40,60,.1),rgba(20,40,60,.35)),url(${LOOKS[LEVELS.find(l=>l.w===wi).ch].img}) center/cover,${w.bg}`);
+  el.innerHTML=`<div class="u-stage"><div class="u-gate"><i class="l"></i><i class="r"></i></div><div class="u-lira">${liraBodySVG(save.outfit,'walk')}</div></div><div class="fog"></div><div class="fog f2"></div><div class="u-title"><span>New world unlocked</span><h2>${w.name}</h2><p>${w.blurb}</p></div><button class="btn green" id="unlockGo">Let's explore</button>`;
+  el.hidden=false;Sound.music(null);Sound.play('reveal');setTimeout(()=>Sound.play('fanfare'),700);
+  $('#unlockGo').onclick=()=>{el.hidden=true;if(cb)cb()};
+}
+function confetti(){
+  Sound.play('confetti');
+  if(calm)return;
+  const box=document.createElement('div'),cols=['#ffd166','#ff9fc6','#8fd3ff','#9ff0c0','#c9a2ff'];box.className='confetti';
+  for(let i=0;i<46;i++){const c=document.createElement('i');c.style.left=Math.random()*100+'%';c.style.background=cols[i%5];c.style.animationDelay=(Math.random()*.6).toFixed(2)+'s';c.style.animationDuration=(2+Math.random()*1.4).toFixed(2)+'s';box.appendChild(c)}
+  $('#app').appendChild(box);setTimeout(()=>box.remove(),4300);
+}
+function countUp(el,to){if(!el)return;if(calm){el.textContent=to;return}const t0=performance.now(),tick=n=>{const k=Math.min(1,(n-t0)/900);el.textContent=Math.round(to*k);if(k<1)requestAnimationFrame(tick)};requestAnimationFrame(tick)}
+
+/* ---------- shop ---------- */
+const IAP={
+  starter:{name:'Starter Pack',price:'$0.99',grant:()=>{save.coins+=1500;save.thorn+=3;if(!save.outfits.includes('moon'))save.outfits.push('moon');save.starter=true}},
+  c1000:{name:'Pouch of Coins',price:'$1.99',grant:()=>{save.coins+=2500}},
+  c5500:{name:'Chest of Coins',price:'$7.99',grant:()=>{save.coins+=14000}},
+};
+function openShop(){state='shop';Sound.music('shop');show(shopEl);shopEl.scrollTop=0;renderShop()}
+function renderShop(){
+  renderTop();
+  const item=(thumb,title,desc,btn)=>`<div class="item"><div class="thumb">${thumb}</div><div><h3>${title}</h3><p>${desc}</p>${btn}</div></div>`;
+  $('#coinList').innerHTML=
+    (save.starter?'':item(liraSVG('moon'),'Starter Pack<span class="tag">One time</span>','1,500 coins, 3 Thorn Strikes and the Moonlight Cloak for Lira.','<button class="btn" data-iap="starter">$0.99 · demo</button>'))+
+    item('<span style="color:#ffd166">●</span>','Pouch of Coins','2,500 coins.','<button class="btn" data-iap="c1000">$1.99 · demo</button>')+
+    item('<span style="color:#ffd166">●●</span>','Chest of Coins<span class="tag">Best value</span>','14,000 coins.','<button class="btn" data-iap="c5500">$7.99 · demo</button>');
+  $('#boostList').innerHTML=
+    item('<span style="color:#7ed35f">✦</span>',`Thorn Strike ×3 <small style="font:700 13px var(--body);color:var(--muted)">(you have ${save.thorn})</small>`,'Smash any single rune. Doesn\'t use a move.','<button class="btn" data-coin="thorn">600 coins</button>')+
+    item('<span style="color:#ff7a8a">♥</span>','Refill lives','Back to 5 lives right away.',`<button class="btn" data-coin="lives" ${save.lives>=MAX_LIVES?'disabled':''}>${save.lives>=MAX_LIVES?'Lives are full':'900 coins'}</button>`);
+  $('#devList').innerHTML=item('<span style="color:#8fd3ff">⚙</span>','Unlock all levels','For testing: play any level without finishing the one before it.',`<button class="btn plain" data-dev="unlock">${save.unlockAll?'On · tap to lock again':'Off · tap to unlock'}</button>`);
+  const sw=(k,label)=>`<button class="btn plain" data-set="${k}">${save[k]?'On · tap to turn off':'Off · tap to turn on'}</button>`;
+  $('#setList').innerHTML=
+    item('<span style="color:#ffd166">♪</span>','Music','Background music on the map and in levels.',sw('music'))+
+    item('<span style="color:#8fd3ff">♫</span>','Sound effects','Rune pops, spells, coins and buttons.',sw('sfx'))+
+    item('<span style="color:#9ff0c0">≋</span>','Vibration','A little buzz when runes match and spells land.',sw('haptics'));
+  $('#privList').innerHTML=
+    item('<span style="color:#8fd3ff">◎</span>','Personalised ads','Let ads be picked for you based on how you use apps. Off means you still see ads, just less tailored.',`<button class="btn plain" data-priv="ads">${save.adsPersonal?'On · tap to turn off':'Off · tap to turn on'}</button>`)+
+    item('<span style="color:#8fd3ff">#</span>','Your player ID',`<b style="font-family:monospace;letter-spacing:1px">${save.pid}</b><br>Send this ID with any privacy request so we can find your data.`,'<button class="btn plain" data-priv="copy">Copy ID</button>')+
+    item('<span style="color:#ffd166">↺</span>','Restore purchases','Got a new phone? Get back the things you bought.','<button class="btn plain" data-priv="restore">Restore</button>')+
+    item('<span style="color:#8fd3ff">§</span>','Privacy policy','What the game collects and your choices.','<button class="btn plain" data-priv="policy">Read policy</button>');
+  $('#outfitList').innerHTML=Object.entries(OUTFITS).map(([id,o])=>{
+    let btn;
+    if(save.outfit===id)btn='<button class="btn plain" disabled>Wearing</button>';
+    else if(save.outfits.includes(id))btn=`<button class="btn plain" data-wear="${id}">Wear</button>`;
+    else if(id==='moon')btn='<button class="btn plain" disabled>In the Starter Pack</button>';
+    else btn=`<button class="btn" data-outfit="${id}">3,000 coins</button>`;
+    return item(liraSVG(id),o.name,'Cosmetic only.',btn);
+  }).join('');
+}
+shopEl.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.set){const k=b.dataset.set;save[k]=!save[k];persist();Sound.set({sfx:save.sfx,music:save.music,haptics:save.haptics});renderShop();if(k==='haptics'&&save.haptics)Sound.haptic('medium');return}
+  if(b.dataset.priv){const k=b.dataset.priv;
+    if(k==='ads'){save.adsPersonal=!save.adsPersonal;persist();renderShop();toast(save.adsPersonal?'Personalised ads on':'Personalised ads off')}
+    else if(k==='copy'){(navigator.clipboard?navigator.clipboard.writeText(save.pid):Promise.reject()).then(()=>toast('Player ID copied'),()=>toast('Your ID: '+save.pid))}
+    else if(k==='restore')toast('Purchases are up to date (demo)');
+    else if(k==='policy')window.open('https://nerlybit2.github.io/lira-privacy/','_blank');
+    return}
+  if(b.dataset.dev){save.unlockAll=!save.unlockAll;persist();renderShop();toast(save.unlockAll?'All levels unlocked':'Levels locked again');return}
+  if(b.dataset.iap){const it=IAP[b.dataset.iap];
+    modal(`<p class="eyebrow">Demo purchase</p><h2>${it.name}</h2><p class="big-stars" style="font-size:34px;color:var(--ink)">${it.price}</p><p class="muted">In the real game this goes through the App Store or Google Play. This is a demo; no money is charged.</p><button class="btn" data-act="ok">Confirm (demo)</button><button class="btn ghost" data-act="no">Cancel</button>`,
+      {ok:()=>{it.grant();persist();Sound.play('purchase');Sound.haptic('success');closeModal();renderShop();paintAvatars();toast('Purchase complete')},no:closeModal});}
+  else if(b.dataset.coin==='thorn')buyThorn(false);
+  else if(b.dataset.coin==='lives'){if(save.coins<900){toast(`You need ${900-save.coins} more coins`);return}save.coins-=900;save.lives=MAX_LIVES;persist();renderShop();toast('Lives refilled')}
+  else if(b.dataset.wear){save.outfit=b.dataset.wear;persist();renderShop();paintAvatars();toast(`Lira is wearing the ${OUTFITS[save.outfit].name}`)}
+  else if(b.dataset.outfit){if(save.coins<3000){toast(`You need ${(3000-save.coins).toLocaleString('en-US')} more coins`);return}save.coins-=3000;save.outfits.push(b.dataset.outfit);save.outfit=b.dataset.outfit;persist();renderShop();paintAvatars();toast('New outfit unlocked!')}
+});
+$('#shopBtn').onclick=openShop;
+$('#shopBack').onclick=()=>goMap();
+
+// every button gives a soft click; back/close style buttons click lower
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled)return;Sound.play(b.classList.contains('ghost')||b.id==='shopBack'||b.id==='exitBtn'?'back':'tap');Sound.haptic('select')},true);
+
+// settings: music, sound effects and vibration, reachable from the map and from inside a level
+function openSettings(){
+  const was=state;if(state==='play')state='paused';
+  const row=(k,label,sub)=>`<div class="toggle-row"><span>${label}<small>${sub}</small></span><button class="switch" role="switch" aria-checked="${save[k]}" aria-label="${label}" data-act="t_${k}"></button></div>`;
+  const draw=()=>modal(`<p class="eyebrow">Settings</p><h2>Sound</h2>
+    ${row('music','Music','Background music')}${row('sfx','Sound effects','Runes, spells, coins, buttons')}${row('haptics','Vibration','Buzz on matches and spells')}
+    <button class="btn green" data-act="done" style="margin-top:16px">Done</button>`,{
+      t_music:()=>flip('music'),t_sfx:()=>flip('sfx'),t_haptics:()=>flip('haptics'),
+      done:()=>{closeModal();if(was==='play'&&lv&&!lv.over)state='play'},
+    });
+  const flip=k=>{save[k]=!save[k];persist();Sound.set({sfx:save.sfx,music:save.music,haptics:save.haptics});if(k==='haptics'&&save.haptics)Sound.haptic('medium');draw()};
+  draw();
+}
+$('#setBtn').onclick=openSettings;$('#setBtnGame').onclick=openSettings;
+
+/* ---------- boot ---------- */
+refreshLiraImg();goMap();
+if(!save.intro){
+  modal(`<div class="body" aria-hidden="true">${liraBodySVG(save.outfit,'cheer')}</div><p class="eyebrow">Rune Forest</p><h2>Hi, I'm Lira!</h2><p class="muted">The Heartrune shattered, and without its magic the forest is falling asleep. Help me gather the runes, gate by gate, and wake the worlds beyond.</p><button class="btn green" data-act="go">Let's go</button>`,
+    {go:()=>{save.intro=true;persist();closeModal()}});
+}
+</script>
+</body>
+</html>

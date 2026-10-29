@@ -1,0 +1,13 @@
+{
+  "name": "Lira: Rune Forest",
+  "short_name": "Lira",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#cfeedd",
+  "theme_color": "#cfeedd",
+  "icons": [
+    { "src": "art/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "art/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
